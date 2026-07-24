@@ -292,9 +292,13 @@ class Dims(EventedModel):
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
-        # Not a field: an event fired when the navigation lock engages/releases,
-        # so views (e.g. the Qt dim sliders) can disable themselves while locked.
-        self.events.add(navigation_lock=Event)
+        # Not fields:
+        # - navigation_lock: fired when the navigation lock engages/releases, so
+        #   views (e.g. the Qt dim sliders) can disable themselves while locked.
+        # - axis_lock_rejected: fired when a navigation request is dropped
+        #   because its axes are locked, so views can flash a reminder. Carries
+        #   the blocked axes in ``value`` and changes no state (see set_point).
+        self.events.add(navigation_lock=Event, axis_lock_rejected=Event)
 
     @staticmethod
     def _nsteps_from_range(dims_range) -> tuple[float, ...]:
@@ -452,9 +456,12 @@ class Dims(EventedModel):
                 for ax, val in zip(axis, value, strict=False)
                 if self._axis_movable(ax)
             ]
-            # Fully blocked: no-op, and crucially emit no event, so a blocked
-            # write cannot feed a dims-change listener loop.
+            # Fully blocked: no-op, and crucially emit no *state-change* event,
+            # so a blocked write cannot feed a dims-change listener loop. The
+            # axis_lock_rejected notice below is safe — it changes no state, so
+            # it cannot re-enter set_point through a dims-change listener.
             if not allowed:
+                self.events.axis_lock_rejected(value=tuple(axis))
                 return
             axis = [ax for ax, _ in allowed]
             value = [val for _, val in allowed]

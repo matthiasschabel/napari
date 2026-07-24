@@ -69,6 +69,9 @@ class QtDims(QWidget):
         self.dims.events.axis_lock_interactive.connect(
             self._on_navigation_lock
         )
+        self.dims.events.axis_lock_rejected.connect(
+            self._on_axis_lock_rejected
+        )
 
     def _on_navigation_lock(self, event=None):
         """Sync every slider row to the current lock state.
@@ -92,6 +95,18 @@ class QtDims(QWidget):
             axis = self._animation_thread.axis
             if axis is not None and not self.dims.is_axis_movable(axis):
                 self.stop()
+
+    def _on_axis_lock_rejected(self, event) -> None:
+        """Flash the padlock on each axis whose navigation was just blocked.
+
+        Covers the non-pointer paths — arrow keys, stepping, the slice editor —
+        which never touch the disabled slider widget and so are relayed here by
+        ``Dims.set_point``. The pointer path flashes itself in the row's
+        ``mousePressEvent``.
+        """
+        for axis in event.value:
+            if 0 <= axis < len(self.slider_widgets):
+                self.slider_widgets[axis]._flash_lock()
 
     @property
     def nsliders(self):

@@ -263,6 +263,12 @@ QtDimSliderWidget > QLineEdit {
   image: url("theme_{{ id }}:/lock.svg");
 }
 
+/* Transient amber tint reminding the user this axis is locked, shown when a
+   navigation attempt on the frozen axis is rejected (see _flash_lock). */
+#axis_lock_button[flash=true] {
+  background: {{ warning }};
+}
+
 #axis_lock_button:hover {
   background: {{ highlight }};
 }
