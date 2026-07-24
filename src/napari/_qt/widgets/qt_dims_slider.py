@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from weakref import ref
 
 import numpy as np
-from qtpy.QtCore import QObject, Qt, QThread, Signal, Slot
+from qtpy.QtCore import QObject, Qt, QThread, QTimer, Signal, Slot
 from qtpy.QtGui import QIntValidator
 from qtpy.QtWidgets import (
     QApplication,
@@ -45,6 +45,9 @@ if TYPE_CHECKING:
 # for the whole axis. QtDims already constrains the row's minimum *height*
 # (SLIDERHEIGHT); this is the matching width constraint.
 SLIDER_MINIMUM_WIDTH = 150
+
+# How long the padlock stays tinted amber after a blocked navigation attempt.
+LOCK_FLASH_MS = 300
 
 
 class _ModifiedScrollBar(ModifiedScrollBar):
@@ -138,7 +141,60 @@ class QtDimSliderWidget(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         self.setLayout(layout)
         self.dims.events.axis_labels.connect(self._pull_label)
+
+        # One reusable single-shot timer per row drives the lock-flash: poking a
+        # locked control again restarts it rather than stacking animations.
+        self._lock_flash_timer = QTimer(self)
+        self._lock_flash_timer.setSingleShot(True)
+        self._lock_flash_timer.setInterval(LOCK_FLASH_MS)
+        self._lock_flash_timer.timeout.connect(self._end_lock_flash)
+
         self._update_lock_state()
+
+    def mousePressEvent(self, event) -> None:
+        """Flash the padlock when the user pokes a frozen navigation control.
+
+        The slider and play button are *disabled* while the axis is locked, and
+        a disabled child does not consume mouse events — Qt propagates them up
+        to this row (pinned by ``test_disabled_child_click_reaches_parent``). So
+        a press that arrives here over one of those frozen controls is the user
+        trying to navigate a locked axis; remind them, then pass it on. The
+        padlock itself stays enabled, so unlock clicks never reach this handler.
+        """
+        if not self.dims.is_axis_movable(self.axis):
+            point = (
+                event.position().toPoint()
+                if hasattr(event, 'position')
+                else event.pos()
+            )
+            frozen = (self.slider, self.play_button, self.curslice_label)
+            if any(w.geometry().contains(point) for w in frozen):
+                self._flash_lock()
+        super().mousePressEvent(event)
+
+    def _flash_lock(self) -> None:
+        """Briefly tint the padlock amber to remind the user the axis is locked.
+
+        A pure reminder — it changes no dims state. Called both for pointer
+        pokes (``mousePressEvent`` above) and for blocked key/step/editor
+        navigation relayed from ``Dims.events.axis_lock_rejected``. Only the
+        persistent per-axis lock flashes; a transient owner lock does not.
+        """
+        if self.axis >= self.dims.ndim or not self.dims.axis_locked[self.axis]:
+            return
+        self._set_lock_flash(True)
+        self._lock_flash_timer.start()  # restart if already running (debounce)
+
+    def _end_lock_flash(self) -> None:
+        self._set_lock_flash(False)
+
+    def _set_lock_flash(self, on: bool) -> None:
+        """Toggle the padlock's ``flash`` style property and repolish."""
+        if self.lock_button.property('flash') == on:
+            return
+        self.lock_button.setProperty('flash', on)
+        self.lock_button.style().unpolish(self.lock_button)
+        self.lock_button.style().polish(self.lock_button)
 
     def _set_slice_from_label(self) -> None:
         """Update the dims point based on the curslice_label."""
@@ -239,6 +295,7 @@ class QtDimSliderWidget(QWidget):
         button = QPushButton(self)
         button.setObjectName('axis_lock_button')
         button.setProperty('locked', False)  # for styling
+        button.setProperty('flash', False)  # transient amber lock reminder
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         button.clicked.connect(self._on_lock_button_clicked)
         return button
