@@ -9,11 +9,14 @@ from typing import TYPE_CHECKING, Any
 
 from napari.utils.events import EmitterGroup
 from napari.utils.interactions import Shortcut
+from napari.utils.key_bindings import coerce_keybinding
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from concurrent.futures import Future
     from typing import Protocol
+
+    from app_model.types import KeyBinding
 
     from napari.utils.key_bindings import KeymapProvider
 
@@ -389,32 +392,48 @@ class ActionManager:
 
         return active_shortcuts
 
-    def _get_repeatable_shortcuts(self, active_keymap) -> list:
+    def _get_repeatable_shortcuts(self, active_keymap) -> list[KeyBinding]:
         """
-        Get active, repeatable shortcuts for the given active keymap.
+        Get the repeatable shortcuts that are live in the given keymap.
 
         Parameters
         ----------
-        active_keymap : KeymapProvider
-            The active keymap provider.
+        active_keymap : dict
+            Resolved keymap, as produced by ``KeymapHandler.active_keymap``.
+            It must be the resolved map rather than the raw keymap chain:
+            the chain still contains bindings that a higher-priority
+            catch-all shadows, and granting those auto-repeat would let it
+            leak to whichever callback actually handles the key.
 
         Returns
         -------
-        list
-            List of shortcuts that are repeatable.
+        list of KeyBinding
+            Bindings that belong to a repeatable action *and* still dispatch
+            to it, coerced to ``KeyBinding`` so callers can compare them
+            against the binding built from a key event. Shortcuts are stored
+            as handed to ``bind_shortcut``, which is a raw ``str`` for the
+            ``register_layer_action(shortcuts=...)`` path and for a rebind
+            from the preferences editor.
         """
-        active_func_names = {i[1].__name__ for i in active_keymap.items()}
-        active_repeatable_shortcuts = []
+        repeatable: list[KeyBinding] = []
         for name, shortcuts in self._shortcuts.items():
             action = self._actions.get(name, None)
-            if (
-                action
-                and action.command.__name__ in active_func_names
-                and action.repeatable
-            ):
-                active_repeatable_shortcuts.extend(shortcuts)
+            if action is None or not action.repeatable:
+                continue
+            # `_update_shortcut_bindings` binds `injected`, and `active_keymap`
+            # hands it back bound as a method
+            injected = action.injected
+            for shortcut in shortcuts:
+                key_bind = coerce_keybinding(shortcut)
+                func = active_keymap.get(key_bind)
+                # identity, not `__name__`: names are reused freely across
+                # modules and plugins, and letting a same-named replacement
+                # inherit the repeat would re-enter it -- clobbering the pending
+                # release state if it is a generator or returns a callback
+                if getattr(func, '__func__', func) is injected:
+                    repeatable.append(key_bind)
 
-        return active_repeatable_shortcuts
+        return repeatable
 
     def trigger(self, name: str) -> Any:
         """Trigger the action `name`."""
