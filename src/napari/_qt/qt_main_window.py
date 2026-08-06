@@ -5,6 +5,7 @@ wrap.
 
 from __future__ import annotations
 
+import atexit
 import contextlib
 import inspect
 import os
@@ -622,8 +623,7 @@ class _QtMainWindow(QMainWindow):
         if self._window._task_status_manager.is_busy():
             self._window._task_status_manager.cancel_all()
 
-        self.status_thread.close_terminate()
-        self.status_thread.wait()
+        self._stop_worker_threads()
 
         if self._ev and self._ev.isRunning():
             self._ev.quit()
@@ -644,12 +644,21 @@ class _QtMainWindow(QMainWindow):
                 time.sleep(0.1)
                 QApplication.processEvents()
 
-        self._qt_viewer.dims.stop()
-
         if self._quit_app:
             quit_app_()
 
         event.accept()
+
+    def _stop_worker_threads(self) -> None:
+        """Stop the worker threads owned by this window and wait for them.
+
+        Qt aborts the process when a running QThread is destroyed, so every
+        teardown path -- window close and interpreter shutdown alike -- has to
+        come through here before Qt deletes the window and its children.
+        """
+        self.status_thread.close_terminate()
+        self.status_thread.wait()
+        self._qt_viewer.dims.stop()
 
     def restart(self):
         """Restart the napari application in a detached process."""
@@ -677,6 +686,23 @@ class _QtMainWindow(QMainWindow):
     def show_notification(notification: Notification):
         """Show notification coming from a thread."""
         NapariQtNotification.show_notification(notification)
+
+
+@atexit.register
+def _shutdown_open_windows() -> None:
+    """Tear down windows still open when the interpreter finalizes.
+
+    Interpreter shutdown -- an IDE restarting its kernel, or a script ending
+    with a viewer still open -- delivers neither a close nor a hide event: the
+    Qt bindings simply delete the windows during their own cleanup. Any thread
+    a window still owns is then destroyed while running, which makes Qt abort
+    the process.
+    """
+    for window in list(_QtMainWindow._instances):
+        # A window whose Qt object is already gone leaves a stale Python
+        # wrapper behind; skip it rather than let it block the live windows.
+        with contextlib.suppress(RuntimeError):
+            window._stop_worker_threads()
 
 
 class Window:

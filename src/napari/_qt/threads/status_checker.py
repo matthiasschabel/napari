@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import atexit
 import os
-from contextlib import suppress
 from threading import Event
-from typing import TYPE_CHECKING, ClassVar
-from weakref import WeakSet, ref
+from typing import TYPE_CHECKING
+from weakref import ref
 
 from qtpy.QtCore import QObject, QThread, Signal
 
@@ -55,11 +53,9 @@ class StatusChecker(QThread):
     # Create a Signal to establish a lightweight communication mechanism between the
     # viewer and the status checker thread for cursor events and related status
     status_and_tooltip_changed = Signal(object)
-    _instances: ClassVar[WeakSet[StatusChecker]] = WeakSet()
 
     def __init__(self, viewer: ViewerModel, parent: QObject | None = None):
         super().__init__(parent=parent)
-        self._instances.add(self)
         self.viewer_ref = ref(viewer)
         self._need_status_update = Event()
         self._need_status_update.clear()
@@ -147,14 +143,3 @@ if os.environ.get('ASV') == 'true':
     # StatusChecker thread may introduce some noise in the benchmark
     # results from waiting on its termination.
     StatusChecker.start = lambda self, priority=0: None
-
-
-@atexit.register
-def _stop_status_checkers() -> None:
-    """Stop status threads before Qt destroys their parent windows."""
-    for status_checker in list(StatusChecker._instances):
-        # A normally closed window may leave its Python wrapper alive after Qt deletes the
-        # underlying object. Other live instances need to be stopped even if one is stale.
-        with suppress(RuntimeError):
-            status_checker.close_terminate()
-            status_checker.wait()
