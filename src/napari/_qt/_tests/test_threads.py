@@ -1,3 +1,6 @@
+import os
+import subprocess
+import sys
 from unittest.mock import MagicMock
 
 import pytest
@@ -51,3 +54,25 @@ def test_waiting_on_no_request(monkeypatch, qtbot):
     status_checker.terminate()
 
     qtbot.wait_until(lambda: status_checker.isFinished())
+
+
+def test_parented_running_checker_stops_at_interpreter_exit():
+    script = """
+from napari._qt.threads.status_checker import StatusChecker
+from qtpy.QtCore import QObject
+
+parent = QObject()
+viewer = type("Viewer", (), {})()
+status_checker = StatusChecker(viewer, parent=parent)
+status_checker.start()
+assert status_checker.isRunning()
+"""
+    env = os.environ.copy()
+    env.pop('ASV', None)
+    subprocess.run(
+        [sys.executable, '-c', script],
+        capture_output=True,
+        check=True,
+        env=env,
+        timeout=30,
+    )
