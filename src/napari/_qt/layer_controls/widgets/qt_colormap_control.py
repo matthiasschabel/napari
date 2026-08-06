@@ -124,6 +124,8 @@ class QtColormapControl(QtWidgetControlsBase):
         Label for the color mode chooser widget.
     """
 
+    CUSTOM_COLORMAP_SELECTOR_VERSION = 1
+
     def __init__(self, parent: QWidget, layer: Layer) -> None:
         super().__init__(parent, layer)
         # Setup layer
@@ -145,23 +147,46 @@ class QtColormapControl(QtWidgetControlsBase):
         self.colorbar_label.setToolTip('Colorbar')
         self.colorbar_label.clicked.connect(self._on_make_colormap)
 
-        colormap_layout = QHBoxLayout()
-        colormap_layout.setContentsMargins(0, 0, 0, 2)
+        self._colormap_layout = QHBoxLayout()
+        self._colormap_layout.setContentsMargins(0, 0, 0, 2)
+        self._custom_selector = None
         if hasattr(self._layer, 'rgb') and self._layer.rgb:
-            colormap_layout.addWidget(QLabel('RGB'))
+            self._colormap_layout.addWidget(QLabel('RGB'))
+            self._colormap_layout.addStretch(1)
             self.colormap_combobox.setVisible(False)
             self.colorbar_label.setVisible(False)
         else:
-            colormap_layout.addWidget(self.colorbar_label)
-            colormap_layout.addWidget(self.colormap_combobox, stretch=1)
-        colormap_layout.addStretch(1)
+            self._colormap_layout.addWidget(self.colorbar_label)
+            self._colormap_layout.addWidget(self.colormap_combobox, stretch=1)
         self.colormapWidget = QWidget()
-        self.colormapWidget.setLayout(colormap_layout)
+        self.colormapWidget.setLayout(self._colormap_layout)
         self.colormapWidget.setProperty('foreground', 'true')
 
         self._on_colormap_change()
 
         self.colormap_widget_label = QtWrappedLabel('colormap:')
+
+    def set_colormap_selector(self, widget: QWidget | None) -> None:
+        """Replace the native selector widgets, or restore them with ``None``.
+
+        The layer model remains authoritative and the native controls stay alive and
+        synchronized while hidden.  This lets an application provide a richer
+        selector without reaching into this control's layout.
+        """
+        if hasattr(self._layer, 'rgb') and self._layer.rgb:
+            return
+        if widget is self._custom_selector:
+            return
+        if self._custom_selector is not None:
+            self._colormap_layout.removeWidget(self._custom_selector)
+            self._custom_selector.setParent(None)
+        self._custom_selector = widget
+        native_visible = widget is None
+        self.colorbar_label.setVisible(native_visible)
+        self.colormap_combobox.setVisible(native_visible)
+        if widget is not None:
+            self._colormap_layout.insertWidget(0, widget, stretch=1)
+            widget.setVisible(True)
 
     def change_color(self, text):
         """Change colormap on the layer model.
