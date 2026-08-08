@@ -2717,6 +2717,8 @@ class Shapes(Layer):
                         vertices[:-1],
                         new_type=shape_classes[ShapeType.POLYGON],
                     )
+        # Clear the drawing state before callbacks can re-enter through the data setter.
+        self._is_creating = False
         # handles the case that
         if index is not None:
             self.events.data(
@@ -2726,7 +2728,6 @@ class Shapes(Layer):
                 vertex_indices=((),),
             )
             self.events.features()
-        self._is_creating = False
         self._update_dims()
 
     @contextmanager

@@ -519,6 +519,54 @@ def test_add_complex_shape(shape_type, create_known_shapes_layer):
     assert layer.selected_data == {n_shapes}
 
 
+def test_finish_polygon_with_data_rewriting_listener(create_known_shapes_layer):
+    """A listener may rewrite `data` from the event that finishes a polygon.
+
+    The `data` setter calls `_finish_drawing`, so such a listener re-enters it. The
+    drawing state must already be cleared, or the re-entrant call takes the creation
+    branch with an index that has been reset, and raises.
+    """
+    layer, _n_shapes, _known_non_shape = create_known_shapes_layer
+    layer.mode = 'add_polygon'
+
+    for coord in [[20, 30], [10, 50], [60, 40], [80, 20]]:
+        for kind, callbacks in (
+            ('mouse_move', mouse_move_callbacks),
+            ('mouse_press', mouse_press_callbacks),
+            ('mouse_release', mouse_release_callbacks),
+        ):
+            callbacks(
+                layer,
+                read_only_mouse_event(
+                    type=kind,
+                    position=coord,
+                    pos=np.array(coord, dtype=float),
+                ),
+            )
+
+    seen_is_creating = []
+    rewritten = False
+
+    def rewrite_data(event):
+        nonlocal rewritten
+        seen_is_creating.append(layer._is_creating)
+        if not rewritten:
+            rewritten = True
+            layer.data = list(layer.data)
+
+    layer.events.data.connect(rewrite_data)
+
+    mouse_double_click_callbacks(
+        layer, read_only_mouse_event(type='mouse_double_click', position=coord)
+    )
+
+    assert rewritten, 'the listener never ran; nothing was exercised'
+    assert not layer._is_creating
+    assert all(seen is False for seen in seen_is_creating), (
+        f'data event saw _is_creating={seen_is_creating}, expected all False'
+    )
+
+
 @pytest.mark.parametrize(
     'shape_type_vertices',
     [
