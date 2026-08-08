@@ -827,22 +827,9 @@ def test_finish_polygon_with_data_rewriting_listener(create_known_shapes_layer):
     )
 
 
-def test_drawing_lifecycle_event_order(create_known_shapes_layer):
-    """`drawing_finished` precedes the settled `data(ADDED)` for a drawn shape.
-
-    `drawing_finished` means the geometry is final, not that every notification
-    has been delivered. Firing it first is what lets a `data` listener observe
-    `is_creating` as False and write to `data` from inside the callback.
-    """
-    layer, _n_shapes, _known_non_shape = create_known_shapes_layer
-    layer.mode = 'add_polygon'
-
-    order = []
-    layer.events.drawing_started.connect(lambda e: order.append('drawing_started'))
-    layer.events.drawing_finished.connect(lambda e: order.append('drawing_finished'))
-    layer.events.data.connect(lambda e: order.append(f'data:{e.action}'))
-
-    for coord in [[20, 30], [10, 50], [60, 40], [80, 20]]:
+def _draw_polygon(layer, coords):
+    """Click each coordinate, then double-click to finish."""
+    for coord in coords:
         for kind, callbacks in (
             ('mouse_move', mouse_move_callbacks),
             ('mouse_press', mouse_press_callbacks),
@@ -856,13 +843,71 @@ def test_drawing_lifecycle_event_order(create_known_shapes_layer):
                     pos=np.array(coord, dtype=float),
                 ),
             )
-
     mouse_double_click_callbacks(
-        layer, read_only_mouse_event(type='mouse_double_click', position=coord)
+        layer,
+        read_only_mouse_event(type='mouse_double_click', position=coords[-1]),
     )
+
+
+def _record_added(layer):
+    added = []
+
+    def on_data(event):
+        if str(event.action) == 'added':
+            added.append(tuple(event.data_indices))
+
+    layer.events.data.connect(on_data)
+    return added
+
+
+def test_drawing_lifecycle_event_order(create_known_shapes_layer):
+    """`drawing_finished` precedes the settled `data(ADDED)` for a drawn shape.
+
+    `drawing_finished` means the geometry is final, not that every notification
+    has been delivered. Firing it first is what lets a `data` listener observe
+    `is_creating` as False and write to `data` from inside the callback.
+    """
+    layer, _n_shapes, _known_non_shape = create_known_shapes_layer
+    layer.mode = 'add_polygon'
+
+    order = []
+    layer.events.drawing_started.connect(
+        lambda e: order.append('drawing_started')
+    )
+    layer.events.drawing_finished.connect(
+        lambda e: order.append('drawing_finished')
+    )
+    layer.events.data.connect(lambda e: order.append(f'data:{e.action}'))
+
+    _draw_polygon(layer, [[20, 30], [10, 50], [60, 40], [80, 20]])
 
     assert order.index('drawing_finished') < order.index('data:added'), order
     assert order.index('drawing_started') < order.index('drawing_finished'), order
+
+
+def test_drawn_polygon_reports_its_index(create_known_shapes_layer):
+    """Finishing a drawn polygon names the shape it added."""
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+    layer.mode = 'add_polygon'
+    added = _record_added(layer)
+
+    _draw_polygon(layer, [[20, 30], [10, 50], [60, 40], [80, 20]])
+
+    assert len(layer.data) == n_shapes + 1
+    assert added == [(n_shapes,)], added
+
+
+def test_discarded_polygon_reports_no_index(create_known_shapes_layer):
+    """A polygon too small to keep is discarded, so nothing is reported added."""
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+    layer.mode = 'add_polygon'
+    added = _record_added(layer)
+
+    # Two vertices cannot make a polygon; `_finish_drawing` drops it.
+    _draw_polygon(layer, [[20, 30], [10, 50]])
+
+    assert len(layer.data) == n_shapes, 'the degenerate shape should be gone'
+    assert added == [()], added
 
 
 @pytest.mark.parametrize(

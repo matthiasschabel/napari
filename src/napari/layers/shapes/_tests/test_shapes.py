@@ -1062,7 +1062,7 @@ def test_polygons(shape):
     assert layer2.events.data.call_args_list[0][1] == {
         'value': [],
         'action': ActionType.ADDING,
-        'data_indices': (-1,),
+        'data_indices': (0,),
         'vertex_indices': ((),),
     }
 
@@ -1072,8 +1072,99 @@ def test_polygons(shape):
     assert (
         layer2.events.data.call_args_list[0][1]['action'] == ActionType.ADDING
     )
-    assert layer2.events.data.call_args_list[0][1]['data_indices'] == (-1,)
+    assert layer2.events.data.call_args_list[0][1]['data_indices'] == (0,)
     assert layer2.events.data.call_args_list[0][1]['vertex_indices'] == ((),)
+
+
+def test_added_indices_survive_a_reentrant_add():
+    """ADDED names where the shape landed, not where it was predicted to land.
+
+    An ADDING listener may itself add shapes, which shifts the position the
+    outer call's shape ends up at. ADDED is therefore computed after the
+    append rather than reused from the ADDING prediction.
+    """
+
+    def square(centre, r=4.0):
+        return np.array(
+            [
+                [centre - r, centre - r],
+                [centre - r, centre + r],
+                [centre + r, centre + r],
+                [centre + r, centre - r],
+            ],
+            dtype=float,
+        )
+
+    layer = Shapes([square(10)], shape_type='polygon')
+    added = []
+    inserted = False
+
+    def on_data(event):
+        nonlocal inserted
+        if str(event.action) == 'added':
+            added.append(tuple(event.data_indices))
+        elif str(event.action) == 'adding' and not inserted:
+            inserted = True
+            layer.add([square(90)], shape_type='polygon')
+
+    layer.events.data.connect(on_data)
+    layer.add([square(50)], shape_type='polygon')
+
+    assert len(layer.data) == 3
+    # The nested add lands at 1; the outer one is pushed to 2.
+    assert added == [(1,), (2,)], added
+
+
+def test_add_reports_indices_for_a_batch():
+    """Adding several shapes to a non-empty layer names all of them."""
+
+    def square(centre, r=4.0):
+        return np.array(
+            [
+                [centre - r, centre - r],
+                [centre - r, centre + r],
+                [centre + r, centre + r],
+                [centre + r, centre - r],
+            ],
+            dtype=float,
+        )
+
+    layer = Shapes([square(10), square(30)], shape_type='polygon')
+    seen = []
+    layer.events.data.connect(
+        lambda event: seen.append(
+            (str(event.action), tuple(event.data_indices))
+        )
+    )
+
+    layer.add([square(50), square(70)], shape_type='polygon')
+
+    assert seen == [('adding', (2, 3)), ('added', (2, 3))], seen
+
+
+def test_finish_drawing_does_not_report_existing_shape_as_added():
+    """`_finish_drawing` outside a draw must not name an existing shape.
+
+    `_moving_value` also holds an existing shape's index during a move or
+    selection, and the `data` and `shape_type` setters call `_finish_drawing`
+    unconditionally.
+    """
+    square = np.array([[0, 0], [0, 10], [10, 10], [10, 0]])
+    layer = Shapes([square, square + 20], shape_type='polygon')
+
+    seen = []
+    layer.events.data.connect(
+        lambda event: seen.append(
+            (str(event.action), tuple(event.data_indices))
+        )
+    )
+
+    layer._moving_value = (1, None)
+    assert not layer._is_creating
+    layer._finish_drawing()
+
+    assert len(layer.data) == 2, 'nothing should have been added'
+    assert seen == [('added', ())], seen
 
 
 def test_add_polygons_raises_error():

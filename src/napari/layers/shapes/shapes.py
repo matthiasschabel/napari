@@ -2136,10 +2136,16 @@ class Shapes(Layer):
         n_new_shapes = number_of_shapes(data)
 
         if n_new_shapes > 0:
+            # Shapes are appended, so the indices they will occupy are known in
+            # advance. This is a prediction: a listener of ADDING may itself add
+            # or remove shapes, which is why ADDED recomputes rather than reusing
+            # this tuple.
             self.events.data(
                 value=self.data,
                 action=ActionType.ADDING,
-                data_indices=(-1,),
+                data_indices=tuple(
+                    range(self.nshapes, self.nshapes + n_new_shapes)
+                ),
                 vertex_indices=((),),
             )
             self._add_shapes(
@@ -2156,7 +2162,11 @@ class Shapes(Layer):
                 self.events.data(
                     value=self.data,
                     action=ActionType.ADDED,
-                    data_indices=(-1,),
+                    # Computed after the append, so it stays correct even if an
+                    # ADDING listener changed the layer in the meantime.
+                    data_indices=tuple(
+                        range(self.nshapes - n_new_shapes, self.nshapes)
+                    ),
                     vertex_indices=((),),
                 )
                 self.events.features()
@@ -2726,6 +2736,12 @@ class Shapes(Layer):
     def _finish_drawing(self, event=None) -> None:
         """Reset properties used in shape drawing."""
         index = copy(self._moving_value[0])
+        # `_moving_value` also holds an existing shape's index during a move or
+        # selection, and this method is called unconditionally by the `data` and
+        # `shape_type` setters. Only a shape that was actually being created, and
+        # was not then dropped for having too few vertices, counts as added.
+        was_creating = self._is_creating
+        discarded = False
         self._is_moving = False
         self._drag_start = None
         self._drag_box = None
@@ -2739,6 +2755,7 @@ class Shapes(Layer):
                 vertices = self._data_view.shapes[index].data
                 if len(vertices) <= 2:
                     self._data_view.remove(index)
+                    discarded = True
                     # Clear selected data to prevent issues.
                     # See https://github.com/napari/napari/pull/6912#discussion_r1601169680
                     self.selected_data.clear()
@@ -2765,6 +2782,7 @@ class Shapes(Layer):
                         )
                 if len(vertices) <= 3:
                     self._data_view.remove(index)
+                    discarded = True
                     # Clear selected data to prevent issues.
                     # See https://github.com/napari/napari/pull/6912#discussion_r1601169680
                     self.selected_data.clear()
@@ -2781,7 +2799,7 @@ class Shapes(Layer):
             self.events.data(
                 value=self.data,
                 action=ActionType.ADDED,
-                data_indices=(-1,),
+                data_indices=(index,) if was_creating and not discarded else (),
                 vertex_indices=((),),
             )
             self.events.features()
