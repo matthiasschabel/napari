@@ -701,6 +701,12 @@ class Shapes(Layer):
         # not given a shape_type through data
         if shape_type is None:
             shape_type = self.shape_type
+        elif isinstance(shape_type, str):
+            # A single type applies to every shape. Broadcast it here, because
+            # the trimming and extending below are list operations: slicing a
+            # str silently yields a shorter str, and concatenating a list to
+            # one raises.
+            shape_type = [shape_type] * n_new_shapes
 
         edge_widths = self._data_view.edge_widths
         edge_color = self._data_view.edge_color

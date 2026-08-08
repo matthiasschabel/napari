@@ -1380,6 +1380,81 @@ def test_changing_shapes(ten_four_corner, twenty_four_corner):
     assert np.allclose(layer._data_view.z_indices[:5], current_z)
 
 
+@pytest.mark.parametrize('n_new', [2, 3, 4])
+def test_setting_data_with_a_single_shape_type(n_new):
+    """`layer.data = (data, 'polygon')` applies that type to every shape.
+
+    The count may shrink, stay the same, or grow: the setter trims or extends
+    the per-shape attribute lists, and a single type has to be broadcast first
+    or those list operations are applied to a string.
+    """
+
+    def square(centre, r=6.0):
+        return np.array(
+            [
+                [centre - r, centre - r],
+                [centre - r, centre + r],
+                [centre + r, centre + r],
+                [centre + r, centre - r],
+            ],
+            dtype=float,
+        )
+
+    layer = Shapes([square(10), square(30), square(50)], shape_type='polygon')
+    layer.data = ([square(10 * (i + 1)) for i in range(n_new)], 'polygon')
+
+    assert layer.nshapes == n_new
+    assert list(layer.shape_type) == ['polygon'] * n_new
+
+
+def test_setting_data_overrides_a_stale_shape_type():
+    """A supplied type replaces what was stored, and per-shape style survives.
+
+    Without a supplied type the setter validates the new vertices against the
+    *previous* per-shape types, so replacing a line with a polygon raises and
+    the only route left is to clear the layer and re-add -- which drops the
+    per-shape edge color and width that an assignment keeps.
+    """
+    square = np.array([[0, 0], [0, 10], [10, 10], [10, 0]], dtype=float)
+    layer = Shapes()
+    layer.add(
+        [square, square + 20],
+        shape_type='polygon',
+        edge_color=['magenta', 'yellow'],
+        edge_width=[3.0, 7.0],
+    )
+    layer.add([np.array([[0.0, 0.0], [20.0, 20.0]])], shape_type='line')
+    assert list(layer.shape_type) == ['polygon', 'polygon', 'line']
+
+    # Four shapes from three, so the grow branch runs and the supplied type
+    # has to already be per-shape.
+    layer.data = (
+        [square, square + 20, square + 40, square + 60],
+        'polygon',
+    )
+
+    assert list(layer.shape_type) == ['polygon'] * 4
+    assert np.allclose(layer.edge_color[0], [1, 0, 1, 1])
+    assert np.allclose(layer.edge_color[1], [1, 1, 0, 1])
+    assert list(layer.edge_width[:2]) == [3.0, 7.0]
+
+
+def test_setting_data_on_an_empty_layer_keeps_the_supplied_type():
+    """Growing from empty must use the supplied type, not the default.
+
+    This is why the broadcast is sized to the incoming data rather than to the
+    layer's current shape count: with no shapes to derive a default from, the
+    grow branch would otherwise fill in 'polygon'.
+    """
+    line = np.array([[0.0, 0.0], [20.0, 20.0]])
+    layer = Shapes()
+
+    layer.data = ([line, line + 5], 'line')
+
+    assert layer.nshapes == 2
+    assert list(layer.shape_type) == ['line', 'line']
+
+
 def test_changing_shape_type():
     """Test changing shape type"""
     np.random.seed(0)
