@@ -1323,6 +1323,16 @@ class Shapes(Layer):
         on an ``add_*`` value before, during, and after a draw, this tracks the
         actual construction window. The ``drawing_started`` and
         ``drawing_finished`` events fire at its boundaries.
+
+        Lifecycle order for one drawn shape is::
+
+            drawing_started -> data(ADDING) -> drawing_finished -> data(ADDED)
+
+        ``drawing_finished`` means the geometry is final, not that every
+        notification has been delivered: it fires before the settled
+        ``data(ADDED)``, so a ``data`` listener always observes
+        ``is_creating`` as ``False`` and may safely write to ``data`` from
+        within the callback.
         """
         return self._is_creating
 

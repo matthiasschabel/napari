@@ -827,6 +827,44 @@ def test_finish_polygon_with_data_rewriting_listener(create_known_shapes_layer):
     )
 
 
+def test_drawing_lifecycle_event_order(create_known_shapes_layer):
+    """`drawing_finished` precedes the settled `data(ADDED)` for a drawn shape.
+
+    `drawing_finished` means the geometry is final, not that every notification
+    has been delivered. Firing it first is what lets a `data` listener observe
+    `is_creating` as False and write to `data` from inside the callback.
+    """
+    layer, _n_shapes, _known_non_shape = create_known_shapes_layer
+    layer.mode = 'add_polygon'
+
+    order = []
+    layer.events.drawing_started.connect(lambda e: order.append('drawing_started'))
+    layer.events.drawing_finished.connect(lambda e: order.append('drawing_finished'))
+    layer.events.data.connect(lambda e: order.append(f'data:{e.action}'))
+
+    for coord in [[20, 30], [10, 50], [60, 40], [80, 20]]:
+        for kind, callbacks in (
+            ('mouse_move', mouse_move_callbacks),
+            ('mouse_press', mouse_press_callbacks),
+            ('mouse_release', mouse_release_callbacks),
+        ):
+            callbacks(
+                layer,
+                read_only_mouse_event(
+                    type=kind,
+                    position=coord,
+                    pos=np.array(coord, dtype=float),
+                ),
+            )
+
+    mouse_double_click_callbacks(
+        layer, read_only_mouse_event(type='mouse_double_click', position=coord)
+    )
+
+    assert order.index('drawing_finished') < order.index('data:added'), order
+    assert order.index('drawing_started') < order.index('drawing_finished'), order
+
+
 @pytest.mark.parametrize(
     'shape_type_vertices',
     [
