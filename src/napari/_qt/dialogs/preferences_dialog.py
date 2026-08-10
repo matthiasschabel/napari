@@ -249,7 +249,44 @@ class PreferencesDialog(QDialog):
                             subname_, form.widget.widgets[name_]
                         )
                     )
+
+        # Inside the builder rather than in `_add_page`: the hook needs
+        # `settings_category`, which is local here, and every caller of the builder
+        # wants the conditional rows applied.
+        self._wire_conditional_rows(form.widget, settings_category)
+
         return form
+
+    @staticmethod
+    def _wire_conditional_rows(page, settings_category) -> None:
+        """Hide rows whose ``preferences_visible_when`` condition is unmet.
+
+        Lets two settings that are alternate expressions of one quantity read
+        as a single row following the selector that picks between them.
+        """
+        conditions = getattr(
+            getattr(settings_category, 'NapariConfig', None),
+            'preferences_visible_when',
+            (),
+        )
+        widgets = page.widgets
+        layout = page.layout()
+
+        for field, controller, values in conditions:
+            # preferences_exclude may have dropped either row.
+            if field not in widgets or controller not in widgets:
+                continue
+
+            def _update(*_, field=field, controller=controller, values=values):
+                widget = widgets[field]
+                visible = widgets[controller].state in values
+                widget.setVisible(visible)
+                label = layout.labelForField(widget)
+                if label is not None:
+                    label.setVisible(visible)
+
+            widgets[controller].on_changed.connect(_update)
+            _update()
 
     def _get_page_dict(
         self,

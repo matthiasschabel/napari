@@ -317,10 +317,20 @@ class ApplicationSettings(EventedModel):
             'save_history',
             'ipy_interactive',
             'plugin_widget_positions',
-            # Set from the play button popup's unit selector, which is where
-            # the duration is meaningful; showing it beside playback_fps would
-            # read as two independent speeds that can disagree.
-            'playback_cycle_seconds',
+        )
+        # Rows shown in preferences only while another field holds one of the
+        # listed values: (field, controlling field, values).
+        preferences_visible_when = (
+            (
+                'playback_fps',
+                'playback_unit',
+                (PlaybackUnit.FRAMES_PER_SECOND,),
+            ),
+            (
+                'playback_cycle_seconds',
+                'playback_unit',
+                (PlaybackUnit.SECONDS_PER_CYCLE,),
+            ),
         )
 
 
