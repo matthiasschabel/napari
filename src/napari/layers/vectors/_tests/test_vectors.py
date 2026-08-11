@@ -497,6 +497,18 @@ def test_switching_edge_color_mode_back_to_direct():
     assert layer.edge_color_mode == 'direct'
 
 
+def test_setting_the_current_edge_color_mode_does_not_emit():
+    data = np.zeros((6, 2, 2))
+    data[:, 1] = [1, 1]
+    layer = Vectors(data)
+    heard = []
+    layer.events.edge_color_mode.connect(lambda event: heard.append(event))
+
+    layer.edge_color_mode = 'direct'
+
+    assert heard == []
+
+
 def test_switching_edge_color_mode_to_colormap_emits_edge_color():
     """Notify renderers when a color mode change remaps vector colors."""
     data = np.zeros((2, 2, 2))

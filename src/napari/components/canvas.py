@@ -9,10 +9,10 @@ from pydantic import Field
 from napari.components.grid import GridCanvas
 from napari.components.overlays import (
     BrushCircleOverlay,
+    CanvasAxesOverlay,
     CanvasOverlay,
     CurrentSliceOverlay,
     DirectionLabelsOverlay,
-    FloatingAxesOverlay,
     ScaleBarOverlay,
     TextOverlay,
     ZoomOverlay,
@@ -47,6 +47,9 @@ class OverlayTiling(EventedModel):
     top_left: Orientation = Orientation.VERTICAL
     top_center: Orientation = Orientation.VERTICAL
     top_right: Orientation = Orientation.HORIZONTAL
+    middle_left: Orientation = Orientation.HORIZONTAL
+    middle_center: Orientation = Orientation.VERTICAL
+    middle_right: Orientation = Orientation.HORIZONTAL
     bottom_left: Orientation = Orientation.HORIZONTAL
     bottom_center: Orientation = Orientation.VERTICAL
     bottom_right: Orientation = Orientation.VERTICAL
@@ -66,7 +69,7 @@ class Canvas(EventedModel):
         A model that controls the enabling and settings of the grid mode.
     overlays : EventedDictNamespace
         A dictionary/namespace containing canvas overlays. By default, it exposes
-        publicly 'scale_bar', 'text', 'current_slice' and 'floating_axes'
+        publicly 'scale_bar', 'text', 'current_slice' and 'axes'
     overlay_tiling : OverlayTiling
         Controls for the overlay tiling direction and padding.
     size : tuple[int, int]
@@ -83,7 +86,7 @@ class Canvas(EventedModel):
                 '_brush_circle': BrushCircleOverlay(),
                 '_zoom_box': ZoomOverlay(),
                 'current_slice': CurrentSliceOverlay(),
-                'floating_axes': FloatingAxesOverlay(),
+                'axes': CanvasAxesOverlay(),
                 'direction_labels': DirectionLabelsOverlay(),
             }
         )

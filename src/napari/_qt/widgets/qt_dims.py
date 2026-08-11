@@ -370,7 +370,7 @@ class QtDims(QWidget):
             warnings.warn('Refusing to play a hidden axis')
 
     @Slot()
-    def stop(self):
+    def stop(self) -> None:
         """Stop axis animation and wait for the animation thread to finish.
 
         Joining matters on teardown: the thread notices the stop flag

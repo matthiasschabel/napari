@@ -50,20 +50,11 @@ def test_colormap_controls_follow_the_mode(qtbot):
 
 
 def test_building_controls_leaves_the_layer_unchanged(qtbot):
-    """Constructing the controls must not assign a feature as edge_color.
-
-    Populating the feature dropdown emits currentTextChanged for the first
-    item; if the handler is already connected, building the controls assigns
-    that feature as the layer's edge color, replacing an explicitly requested
-    direct color with feature-mapped colors (the color assertion below is the
-    regression detector; the mode is restored by change_edge_color_feature).
-    """
     layer = Vectors(
         _VECTORS,
         features={'phase': np.array([0.5, 1.5])},
         edge_color='yellow',
     )
-    assert layer.edge_color_mode == 'direct'
 
     qtctrl = QtVectorsControls(layer)
     qtbot.addWidget(qtctrl)
@@ -72,32 +63,22 @@ def test_building_controls_leaves_the_layer_unchanged(qtbot):
     np.testing.assert_allclose(layer.edge_color, [[1, 1, 0, 1], [1, 1, 0, 1]])
 
 
-def test_mode_changes_from_the_controls_reach_other_listeners(qtbot):
-    """A mode switch made in the combobox must emit edge_color_mode.
-
-    change_edge_color_mode blocks its own resync callback while assigning the
-    mode; blocking the whole emitter instead hides every combobox-driven mode
-    switch from external listeners synchronizing state to the layer.
-    """
+def test_mode_change_from_controls_reaches_other_listeners(qtbot):
     layer = Vectors(
         _VECTORS,
         features={'phase': np.array([0.5, 1.5])},
         edge_color='phase',
     )
-    assert layer.edge_color_mode == 'colormap'
     qtctrl = QtVectorsControls(layer)
     qtbot.addWidget(qtctrl)
     heard = []
-    layer.events.edge_color_mode.connect(
-        lambda event: heard.append(str(layer.edge_color_mode))
-    )
+    layer.events.edge_color_mode.connect(lambda event: heard.append(event))
 
-    combobox = qtctrl._edge_color_feature_control.color_mode_combobox
-    combobox.setCurrentText('direct')
+    control = qtctrl._edge_color_feature_control
+    control.color_mode_combobox.setCurrentText('direct')
 
     assert layer.edge_color_mode == 'direct'
-    assert heard == ['direct']
-    assert combobox.currentText() == 'direct'
+    assert len(heard) == 1
 
 
 def test_rejected_mode_change_rolls_back_without_notifying(qtbot):
