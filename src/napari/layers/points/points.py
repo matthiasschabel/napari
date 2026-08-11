@@ -41,10 +41,7 @@ from napari.layers.utils._slice_input import (
     _SliceInput,
     _ThickNDSlice,
 )
-from napari.layers.utils.color_manager import (
-    DEFAULT_COLOR_CYCLE,
-    ColorManager,
-)
+from napari.layers.utils.color_manager import ColorManager
 from napari.layers.utils.color_transformations import ColorType
 from napari.layers.utils.interactivity_utils import (
     displayed_plane_from_nd_line_segment,
@@ -79,8 +76,6 @@ if TYPE_CHECKING:
 
     from napari.components.dims import Dims
 
-# DEFAULT_COLOR_CYCLE moved to color_manager; kept importable from here for callers.
-__all__ = ['DEFAULT_COLOR_CYCLE', 'Points']
 
 _OUT_SLICE_DISP_WARNING_MSG = (
     'out_of_slice_display (previously "n_dimensional") is deprecated since 0.9.0 (superseded by projection_mode). '
