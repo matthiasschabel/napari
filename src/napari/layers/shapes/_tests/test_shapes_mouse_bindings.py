@@ -663,6 +663,66 @@ def test_polygon_lasso_tablet(create_known_shapes_layer):
     assert layer.selected_data == {n_shapes}
 
 
+@pytest.mark.parametrize(
+    ('preserve_lasso_vertices', 'expected_added'), [(False, 0), (True, 1)]
+)
+def test_polygon_lasso_preserves_sampled_vertices(
+    create_known_shapes_layer, preserve_lasso_vertices, expected_added
+):
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+    desired_shape = np.array(
+        [[20, 30], [20, 50], [20, 70], [60, 70], [80, 20]]
+    )
+
+    get_settings().experimental.rdp_epsilon = 100
+    layer.preserve_lasso_vertices = preserve_lasso_vertices
+    layer.mode = 'add_polygon_lasso'
+
+    event = read_only_mouse_event(
+        type='mouse_press',
+        is_dragging=True,
+        position=desired_shape[0],
+        pos=desired_shape[0],
+    )
+    mouse_press_callbacks(layer, event)
+
+    for coord in desired_shape[1:]:
+        event = read_only_mouse_event(
+            type='mouse_move',
+            is_dragging=True,
+            position=coord,
+            pos=coord,
+        )
+        mouse_move_callbacks(layer, event)
+
+    event = read_only_mouse_event(
+        type='mouse_release',
+        is_dragging=True,
+        position=desired_shape[-1],
+        pos=desired_shape[-1],
+    )
+    mouse_release_callbacks(layer, event)
+
+    assert len(layer.data) == n_shapes + expected_added
+    if preserve_lasso_vertices:
+        assert np.array_equal(desired_shape, layer.data[-1])
+
+
+def test_preserve_lasso_vertices_event():
+    layer = Shapes()
+    changed = Mock()
+    layer.events.preserve_lasso_vertices.connect(changed)
+
+    layer.preserve_lasso_vertices = True
+
+    changed.assert_called_once()
+
+
+def test_preserve_lasso_vertices_requires_bool():
+    with pytest.raises(TypeError, match='must be a bool'):
+        Shapes(preserve_lasso_vertices=1)
+
+
 def test_polygon_lasso_mouse(create_known_shapes_layer):
     """Draw polygon with mouse. Events in sequence are mouse press, release, move, press, release"""
     layer, n_shapes, _known_non_shape = create_known_shapes_layer
@@ -779,7 +839,9 @@ def test_add_complex_shape(shape_type, create_known_shapes_layer):
     assert layer.selected_data == {n_shapes}
 
 
-def test_finish_polygon_with_data_rewriting_listener(create_known_shapes_layer):
+def test_finish_polygon_with_data_rewriting_listener(
+    create_known_shapes_layer,
+):
     """A listener may rewrite `data` from the event that finishes a polygon.
 
     The `data` setter calls `_finish_drawing`, so such a listener re-enters it. The
@@ -882,7 +944,9 @@ def test_drawing_lifecycle_event_order(create_known_shapes_layer):
     _draw_polygon(layer, [[20, 30], [10, 50], [60, 40], [80, 20]])
 
     assert order.index('drawing_finished') < order.index('data:added'), order
-    assert order.index('drawing_started') < order.index('drawing_finished'), order
+    assert order.index('drawing_started') < order.index('drawing_finished'), (
+        order
+    )
 
 
 def test_drawn_polygon_reports_its_index(create_known_shapes_layer):
