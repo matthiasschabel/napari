@@ -170,6 +170,9 @@ class Shapes(Layer):
     projection_mode : str
         How data outside the viewed dimensions but inside the thick Dims slice will
         be projected onto the viewed dimenions.
+    preserve_lasso_vertices : bool
+        Whether polygon lasso completion keeps every sampled vertex instead of applying
+        Ramer-Douglas-Peucker simplification.
     properties : dict {str: array (N,)}, DataFrame
         Properties for each shape. Each property should be an array of length N,
         where N is the number of shapes.
@@ -367,6 +370,8 @@ class Shapes(Layer):
     # in the thumbnail
     _max_shapes_thumbnail = 100
 
+    LASSO_VERTEX_PRESERVATION_VERSION = 1
+
     _drag_modes: ClassVar[dict[Mode, Callable[[Shapes, Event], Any]]] = {
         Mode.PAN_ZOOM: no_op,
         Mode.TRANSFORM: transform_with_box,
@@ -461,6 +466,7 @@ class Shapes(Layer):
         metadata=None,
         name=None,
         opacity=0.7,
+        preserve_lasso_vertices=False,
         projection_mode='none',
         properties=None,
         property_choices=None,
@@ -517,7 +523,11 @@ class Shapes(Layer):
             highlight=Event,
             features=Event,
             feature_defaults=Event,
+            preserve_lasso_vertices=Event,
         )
+
+        self._preserve_lasso_vertices = False
+        self.preserve_lasso_vertices = preserve_lasso_vertices
 
         # Flag set to false to block thumbnail refresh
         self._allow_thumbnail_update = True
@@ -1612,6 +1622,7 @@ class Shapes(Layer):
                 'text': self.text.model_dump(),
                 'shape_type': self.shape_type,
                 'opacity': self.opacity,
+                'preserve_lasso_vertices': self.preserve_lasso_vertices,
                 'z_index': self.z_index,
                 'edge_width': self.edge_width,
                 'face_color': face_color,
@@ -1628,6 +1639,22 @@ class Shapes(Layer):
             }
         )
         return state
+
+    @property
+    def preserve_lasso_vertices(self) -> bool:
+        """Whether polygon lasso completion preserves every sampled vertex.
+
+        .. versionadded:: 0.9.0
+        """
+        return self._preserve_lasso_vertices
+
+    @preserve_lasso_vertices.setter
+    def preserve_lasso_vertices(self, preserve: bool) -> None:
+        if not isinstance(preserve, bool):
+            raise TypeError('preserve_lasso_vertices must be a bool')
+        if self._preserve_lasso_vertices != preserve:
+            self._preserve_lasso_vertices = preserve
+            self.events.preserve_lasso_vertices()
 
     @property
     def _view_indices(self):
@@ -2743,7 +2770,10 @@ class Shapes(Layer):
                     self._data_view.edit(index, vertices[:-1])
             if self._mode in {Mode.ADD_POLYGON, Mode.ADD_POLYGON_LASSO}:
                 vertices = self._data_view.shapes[index].data
-                if self._mode == Mode.ADD_POLYGON_LASSO:
+                if (
+                    self._mode == Mode.ADD_POLYGON_LASSO
+                    and not self.preserve_lasso_vertices
+                ):
                     prev_vertices = len(vertices)
                     vertices = rdp(
                         vertices,
