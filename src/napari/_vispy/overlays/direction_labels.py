@@ -76,8 +76,14 @@ class VispyDirectionLabelsOverlay(ViewerOverlayMixin, VispyCanvasOverlay):
             (self.viewer.dims.events.ndim, self._on_labels_change),
             (self.viewer.dims.events.order, self._on_labels_change),
             (self.viewer.dims.events.ndisplay, self._on_labels_change),
-            (self.viewer.camera.events.orientation, self._on_labels_change),
-            (self.viewer.camera.events.orientation2d, self._on_labels_change),
+            (
+                self.viewer.scene.camera.events.orientation,
+                self._on_labels_change,
+            ),
+            (
+                self.viewer.scene.camera.events.orientation2d,
+                self._on_labels_change,
+            ),
             (self.viewer.events.theme, self._on_color_change),
             (get_settings().appearance.events.theme, self._on_color_change),
         ]
@@ -115,7 +121,7 @@ class VispyDirectionLabelsOverlay(ViewerOverlayMixin, VispyCanvasOverlay):
             self.overlay.labels, self.viewer.dims.ndim
         )
         return direction_edge_labels(
-            labels, dims=self.viewer.dims, camera=self.viewer.camera
+            labels, dims=self.viewer.dims, camera=self.viewer.scene.camera
         )
 
     def _on_labels_change(self, event: Event | None = None) -> None:

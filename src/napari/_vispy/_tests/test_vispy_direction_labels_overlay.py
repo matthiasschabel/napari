@@ -40,7 +40,7 @@ def test_default_orientation_places_each_label_on_its_edge():
 
 def test_vertical_flip_swaps_top_and_bottom():
     viewer, view = _make_view()
-    viewer.camera.orientation = ('away', 'up', 'right')
+    viewer.scene.camera.orientation = ('away', 'up', 'right')
     assert _shown(view) == {
         'top': 'P',
         'bottom': 'A',
@@ -51,7 +51,7 @@ def test_vertical_flip_swaps_top_and_bottom():
 
 def test_horizontal_flip_swaps_left_and_right():
     viewer, view = _make_view()
-    viewer.camera.orientation = ('away', 'down', 'left')
+    viewer.scene.camera.orientation = ('away', 'down', 'left')
     assert _shown(view) == {
         'top': 'A',
         'bottom': 'P',
@@ -115,7 +115,7 @@ def test_close_disconnects_model_events():
     viewer, view = _make_view()
     before = _shown(view)
     view.close()
-    viewer.camera.orientation = ('away', 'up', 'left')
+    viewer.scene.camera.orientation = ('away', 'up', 'left')
     viewer.dims.ndisplay = 3
     viewer.direction_labels.labels = []
     assert _shown(view) == before
