@@ -243,6 +243,41 @@ is 210 passed, 19 skipped, and the components suite is 567 passed. The
 `main` that predates the `Scene` refactor (#9323); it needs this port when it is
 rebased for upstream review.
 
+### P2-1 transparent stream status
+
+Fully transparent Shapes face and edge omission was investigated on the combined
+P0/P1 integration renderer and deferred. The corrected probe explicitly draws
+the VisPy scene, waits for GPU completion, records per-arm upload counts, and
+compares offscreen pixels.
+
+| Workload in `translucent_no_depth` | Paired effect |
+|---|---:|
+| 4,096 filled rectangles, triangle-index filtering | 11.1 percent faster |
+| 16,384 filled rectangles, triangle-index filtering | 7.0 percent faster |
+| 32,768 filled rectangles, triangle-index filtering | 7.5 percent faster |
+| 16,384 outline rectangles, triangle-index filtering | 1.9 percent slower |
+| 4,096 overlapping filled rectangles | 2.5 percent faster |
+| 4,096 filled rectangles, vertex compaction | 8.5 percent faster |
+
+The rendered pixels were byte-identical in every safe-mode case, and counters
+proved that the expected triangles were removed. The gain is nevertheless
+restricted to the non-default `translucent_no_depth` mode. Default translucent
+rendering still writes depth, several other blending modes are provably
+pixel-different, camera frames do not upload geometry, and the outline case
+regressed. Vertex compaction also underperformed index-only filtering.
+
+Construction does not justify a model-level change either. With the warmed
+Bermuda backend, edge triangulation was 1.93 percent of total construction for
+4,096 non-convex 20-vertex polygons; paired combined-minus-face time was 2.51
+percent. Removing model geometry would still break hit testing, selection
+outlines, and color-only style reactivation.
+
+The decision, raw samples, exact commands, and reusable probes are retained in
+`docs/dev/shapes_transparent_streams.md` and `tools/perfmon/`. Claude accepted
+the production deferral after plan and implementation convergence review. The
+next P2 target is the active-edit overlay and incremental Shapes storage, which
+may later create a cheap render-only boundary for revisiting omission.
+
 ### Recommended architecture
 
 The renderer should move from broad "layer changed, reset the visual" operations
@@ -300,7 +335,7 @@ mutate GPU resources, and stale payload IDs should be discarded.
 | P1 | Narrow slice invalidation | Model cost fell from 13.78 to 4.93 ms | Non-breaking |
 | P1 | Cache displayed transforms and update only on transform changes | Major Labels multi-layer cost | Non-breaking |
 | P2 | Add incremental Shapes CPU and GPU storage with an active-edit overlay | Removes total-geometry work from mouse movement | Non-breaking internally |
-| P2 | Omit fully transparent face and edge streams | Avoids useless triangulation and draws | Non-breaking |
+| P2 (deferred) | Omit fully transparent face and edge streams | Safe non-default mode gained 7-11 percent for filled layers but regressed outlines; model construction share was about 2 percent | Non-breaking only with blend and interaction semantics preserved |
 | P2 | Add exact viewport culling above measured thresholds | Helps zoomed geometric workloads | Non-breaking when pixel-exact |
 | P2 | Preserve raster textures and use partial or cancellable uploads | Addresses fixed-pixel multi-layer penalty | Non-breaking |
 | P3 | Add optional screen-space aggregation and adaptive quality | Large dense-data gains | Changes visual behavior |
@@ -448,11 +483,12 @@ the low-risk stages described above.
 3. Rebaseline all partition matrices on the combined P0/P1 integration tree.
 4. Profile interactive Shapes editing to design the smallest incremental CPU and
    GPU geometry path that removes total-layer work from mouse movement.
-5. Measure transparent face and edge omission separately, including style
-   mutations that reactivate either stream.
+5. Revisit transparent stream omission only after a render-payload boundary can
+   preserve interaction geometry and make transition invalidation cheap.
 6. Prototype exact viewport culling only after the instrumentation can prove
    both its cutoff and its invalidation cost.
 
-P0/P1 is complete. The next milestone should be a separately reviewed P2 Shapes
-incremental-geometry change, selected from fresh combined-tree profiles rather
-than from the original audit alone.
+P0/P1 is complete. The P2 transparent-stream measurement gate is complete and
+deferred. The next milestone should be a separately reviewed P2 Shapes
+active-edit overlay and incremental-geometry change, selected from fresh
+combined-tree profiles rather than from the original audit alone.
