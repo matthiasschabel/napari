@@ -2,9 +2,61 @@ import numpy as np
 import pytest
 
 from napari._vispy.layers.vectors import (
+    VispyVectorsLayer,
     generate_vector_meshes,
     generate_vector_meshes_2D,
 )
+from napari._vispy.utils.qt_font import FontInfo
+from napari.components import Dims
+from napari.layers import Vectors
+
+VECTOR = np.array([[[0, 0], [1, 1]]])
+
+
+def test_empty_vector_visual_is_hidden_until_data_is_added():
+    layer = Vectors()
+    vispy_layer = VispyVectorsLayer(layer, font_info=FontInfo())
+
+    assert vispy_layer.node.visible
+    assert not vispy_layer.node.mesh.visible
+
+    layer.data = VECTOR
+    assert vispy_layer.node.mesh.visible
+
+    layer.visible = False
+    assert not vispy_layer.node.visible
+
+    layer.data = np.empty((0, 2, 2))
+    layer.visible = True
+    assert vispy_layer.node.visible
+    assert not vispy_layer.node.mesh.visible
+
+
+def test_vector_mesh_is_hidden_without_hiding_overlays(
+    make_napari_viewer,
+):
+    vector = np.pad(VECTOR, ((0, 0), (0, 0), (1, 0)))
+    viewer = make_napari_viewer()
+    layer = viewer.add_vectors(vector)
+    layer.bounding_box.visible = True
+    canvas = viewer.window._qt_viewer.canvas
+    vispy_layer = canvas.layer_to_visual[layer]
+    bounding_box_visual = canvas._layer_overlay_to_visual[layer][
+        layer.bounding_box
+    ]
+
+    assert vispy_layer.node.visible
+    assert vispy_layer.node.mesh.visible
+    assert bounding_box_visual.node.parent is vispy_layer.node
+    assert bounding_box_visual.node.visible
+
+    layer._slice_dims(Dims(ndim=3, point=(1, 0, 0)))
+    assert vispy_layer.node.visible
+    assert not vispy_layer.node.mesh.visible
+    assert bounding_box_visual.node.visible
+
+    layer._slice_dims(Dims(ndim=3, point=(0, 0, 0)))
+    assert vispy_layer.node.mesh.visible
 
 
 @pytest.mark.parametrize(

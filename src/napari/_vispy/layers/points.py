@@ -6,7 +6,7 @@ import numpy as np
 
 from napari._vispy.layers.base import VispyBaseLayer
 from napari._vispy.utils.gl import BLENDING_MODES
-from napari._vispy.utils.text import update_text
+from napari._vispy.utils.text import _has_visible_text, update_text
 from napari._vispy.visuals.points import PointsVisual
 from napari.settings import get_settings
 from napari.utils.colormaps.standardize_color import transform_color
@@ -53,7 +53,8 @@ class VispyPointsLayer(VispyBaseLayer):
         # Set vispy data, noting that the order of the points needs to be
         # reversed to make the most recently added point appear on top
         # and the rows / columns need to be switched for vispy's x / y ordering
-        if len(self.layer._view_indices) == 0:
+        has_points = len(self.layer._view_indices) > 0
+        if not has_points:
             # always pass one invisible point to avoid issues
             data = np.zeros((1, self.layer._slice_input.ndisplay))
             size = np.zeros(1)
@@ -97,12 +98,14 @@ class VispyPointsLayer(VispyBaseLayer):
             face_color=face_color,
             **border_kw,
         )
+        self.node.points_markers.visible = has_points
 
         self.reset()
 
     def _on_highlight_change(self):
         settings = get_settings()
-        if len(self.layer._highlight_index) > 0:
+        has_highlight = len(self.layer._highlight_index) > 0
+        if has_highlight:
             # Color the hovered or selected points
 
             # _highlight_index contains indices into the view arrays, but we can get the
@@ -145,11 +148,13 @@ class VispyPointsLayer(VispyBaseLayer):
             edge_color=highlight_color,
             face_color=transform_color('transparent'),
         )
+        self.node.selection_markers.visible = has_highlight
 
-        if (
+        has_highlight_box = not (
             self.layer._highlight_box is None
             or 0 in self.layer._highlight_box.shape
-        ):
+        )
+        if not has_highlight_box:
             pos = np.zeros((1, 3))
             highlight_thickness = 0
         else:
@@ -163,6 +168,7 @@ class VispyPointsLayer(VispyBaseLayer):
             color=highlight_color,
             width=highlight_thickness,
         )
+        self.node.highlight_lines.visible = has_highlight_box
 
         self.node.update()
 
@@ -175,6 +181,7 @@ class VispyPointsLayer(VispyBaseLayer):
             If true, update the node after setting the properties
         """
         update_text(node=self.node.text, layer=self.layer)
+        self.node.text.visible = _has_visible_text(self.layer)
         if update_node:
             self.node.update()
 

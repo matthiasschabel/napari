@@ -34,7 +34,8 @@ class VispyVectorsLayer(VispyBaseLayer):
         ndisplay = self.layer._slice_input.ndisplay
         ndim = self.layer.ndim
 
-        if len(vertices) == 0 or len(faces) == 0:
+        has_vectors = len(vertices) > 0 and len(faces) > 0
+        if not has_vectors:
             vertices = np.zeros((3, ndisplay))
             faces = np.array([[0, 1, 2]])
             face_color = np.array([[0, 0, 0, 0]])
@@ -44,11 +45,12 @@ class VispyVectorsLayer(VispyBaseLayer):
         if ndisplay == 3 and ndim == 2:
             vertices = np.pad(vertices, ((0, 0), (0, 1)), mode='constant')
 
-        self.node.set_data(
+        self.node.mesh.set_data(
             vertices=vertices,
             faces=faces,
             face_colors=face_color,
         )
+        self.node.mesh.visible = has_vectors
 
         self.node.update()
         # Call to update order of translation values with new dims:

@@ -8,6 +8,63 @@ from napari.layers import Points
 from napari.layers.points._points_constants import PointsProjectionMode
 
 
+def test_empty_point_visuals_are_hidden_until_data_is_added():
+    layer = Points(text={'string': {'constant': 'label'}})
+    vispy_layer = VispyPointsLayer(layer, font_info=FontInfo())
+
+    assert not vispy_layer.node.points_markers.visible
+    assert not vispy_layer.node.text.visible
+
+    layer.add([0, 0])
+    assert vispy_layer.node.points_markers.visible
+    assert vispy_layer.node.text.visible
+
+    layer.data = np.empty((0, 2))
+    assert not vispy_layer.node.points_markers.visible
+    assert not vispy_layer.node.text.visible
+
+
+def test_point_markers_are_hidden_only_while_the_slice_is_empty():
+    layer = Points([[0, 0, 0]])
+    vispy_layer = VispyPointsLayer(layer, font_info=FontInfo())
+
+    assert vispy_layer.node.points_markers.visible
+
+    layer._slice_dims(Dims(ndim=3, point=(1, 0, 0)))
+    assert vispy_layer.node.visible
+    assert not vispy_layer.node.points_markers.visible
+
+    layer._slice_dims(Dims(ndim=3, point=(0, 0, 0)))
+    assert vispy_layer.node.points_markers.visible
+
+
+def test_point_highlights_are_hidden_until_a_point_is_selected():
+    layer = Points([[0, 0]])
+    vispy_layer = VispyPointsLayer(layer, font_info=FontInfo())
+    highlight_nodes = (
+        vispy_layer.node.selection_markers,
+        vispy_layer.node.highlight_lines,
+    )
+
+    assert [node.visible for node in highlight_nodes] == [False, False]
+
+    layer.mode = 'select'
+    layer.selected_data = {0}
+    assert [node.visible for node in highlight_nodes] == [True, False]
+
+    layer.selected_data = set()
+    assert [node.visible for node in highlight_nodes] == [False, False]
+
+    layer._is_selecting = True
+    layer._drag_box = np.array([[0, 0], [1, 1]])
+    layer._set_highlight(force=True)
+    assert [node.visible for node in highlight_nodes] == [False, True]
+
+    layer._is_selecting = False
+    layer._set_highlight(force=True)
+    assert [node.visible for node in highlight_nodes] == [False, False]
+
+
 @pytest.mark.parametrize('opacity', [0, 0.3, 0.7, 1])
 def test_VispyPointsLayer(opacity):
     points = np.array([[100, 100], [200, 200], [300, 100]])
