@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from vispy.scene.visuals import Compound, Line, Markers, Mesh
+from vispy.scene.visuals import Compound, Line, Markers
 
 from napari._vispy.visuals.clipping_planes_mixin import ClippingPlanesMixin
+from napari._vispy.visuals.mesh import Mesh
 from napari._vispy.visuals.text import Text
 
 if TYPE_CHECKING:

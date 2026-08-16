@@ -1,7 +1,9 @@
 import numpy as np
+from vispy.visuals.mesh import MeshVisual
 
 from napari._vispy.layers.shapes import VispyShapesLayer
 from napari._vispy.utils.qt_font import FontInfo
+from napari._vispy.visuals.mesh import Mesh
 from napari.components import Dims
 from napari.layers import Shapes
 
@@ -66,6 +68,31 @@ def test_shape_text_is_hidden_when_no_text_is_visible():
 
     layer.text.visible = False
     assert not text_node.visible
+
+
+def test_repeated_mesh_updates_reuse_rgba_color_transform():
+    shape = np.array([[0, 0], [0, 10], [10, 10], [10, 0]])
+    layer = Shapes(shape)
+    vispy_layer = VispyShapesLayer(layer, font_info=FontInfo())
+    mesh = vispy_layer.node.shape_faces
+
+    rgba = np.zeros((3, 4), dtype=np.float32)
+    vispy_color_transform = MeshVisual._build_color_transform(mesh, rgba)
+    assert Mesh._null_color_transform.code == vispy_color_transform.code
+
+    scalar_values = np.zeros((3, 1), dtype=np.float32)
+    assert (
+        mesh._build_color_transform(scalar_values)
+        is not Mesh._null_color_transform
+    )
+
+    mesh._update_data()
+    color_transform = mesh.shared_program.vert['color_transform']
+
+    layer.face_color = 'red'
+    mesh._update_data()
+
+    assert mesh.shared_program.vert['color_transform'] is color_transform
 
 
 def test_remove_selected_with_derived_text():

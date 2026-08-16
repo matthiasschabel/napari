@@ -7,6 +7,7 @@ from napari._vispy.layers.vectors import (
     generate_vector_meshes_2D,
 )
 from napari._vispy.utils.qt_font import FontInfo
+from napari._vispy.visuals.mesh import Mesh
 from napari.components import Dims
 from napari.layers import Vectors
 
@@ -57,6 +58,22 @@ def test_vector_mesh_is_hidden_without_hiding_overlays(
 
     layer._slice_dims(Dims(ndim=3, point=(0, 0, 0)))
     assert vispy_layer.node.mesh.visible
+
+
+def test_repeated_vector_mesh_updates_reuse_rgba_color_transform():
+    vectors = np.array([[[0, 0], [1, 1]]])
+    layer = Vectors(vectors)
+    vispy_layer = VispyVectorsLayer(layer, font_info=FontInfo())
+    mesh = vispy_layer.node.mesh
+
+    assert isinstance(mesh, Mesh)
+    mesh._update_data()
+    color_transform = mesh.shared_program.vert['color_transform']
+
+    layer.edge_color = 'red'
+    mesh._update_data()
+
+    assert mesh.shared_program.vert['color_transform'] is color_transform
 
 
 @pytest.mark.parametrize(
