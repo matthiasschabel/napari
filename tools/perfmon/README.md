@@ -60,3 +60,19 @@ was an improvement:
 ```shell
 python tools/perfmon/compare_callable.py slicing Layer.refresh latest test
 ```
+
+## Focused rendering probes
+
+Two standalone probes retain the transparent Shapes stream investigation. They
+isolate napari settings automatically and emit JSON to standard output:
+
+```shell
+python tools/perfmon/probe_shapes_transparent_stream_render.py \
+  --mode paired --paired-candidate triangles --style fill --shapes 16384
+python tools/perfmon/probe_shapes_transparent_stream_construction.py \
+  --count 4096 --shape polygon --backend fastest --repeats 7
+```
+
+The render probe requires a working Qt/OpenGL context. See
+`docs/dev/shapes_transparent_streams.md` for the measured matrix, raw samples,
+and interpretation.
