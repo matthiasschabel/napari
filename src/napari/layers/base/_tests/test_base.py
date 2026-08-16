@@ -5,6 +5,7 @@ import numpy.testing as npt
 import pint
 import pytest
 
+from napari.components.dims import Dims
 from napari.layers.base import LayerLock
 from napari.layers.base._test_util_sample_layer import SampleLayer
 
@@ -220,6 +221,26 @@ def test_invalidate_extent_shear():
     with layer._block_refresh():
         layer.shear = [1]
     npt.assert_array_equal(layer.extent.world, [[0, 0], [28, 19]])
+
+
+def test_slice_change_preserves_extent_cache():
+    layer = SampleLayer(np.empty((3, 10, 10)))
+    cached_extent = layer.extent
+    cached_augmented_extent = layer._extent_augmented
+
+    layer._slice_dims(Dims(ndim=3, point=(1, 0, 0)))
+
+    assert layer.extent is cached_extent
+    assert layer._extent_augmented is cached_augmented_extent
+
+    layer._slice_dims(Dims(ndim=3, ndisplay=3))
+    assert layer.extent is cached_extent
+    assert layer._extent_augmented is cached_augmented_extent
+
+    layer.refresh()
+    assert layer.extent is not cached_extent
+    assert layer._extent_augmented is not cached_augmented_extent
+    npt.assert_array_equal(layer.extent.world, cached_extent.world)
 
 
 def test_get_ray_intersections_anisotropic():

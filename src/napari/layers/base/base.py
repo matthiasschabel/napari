@@ -1469,7 +1469,7 @@ class Layer(KeymapProvider, MousemapProvider, ABC, metaclass=PostInit):
                 data_displayed=True,
                 thumbnail=True,
                 highlight=True,
-                extent=True,
+                extent=False,
             )
 
     def _world_to_layer_dims(
@@ -1699,6 +1699,8 @@ class Layer(KeymapProvider, MousemapProvider, ABC, metaclass=PostInit):
         if get_settings().experimental.async_ and data_displayed:
             # full async slice reload, it will also update everything when done slicing
             # via the callback of layer.loaded which calls _refresh_sync
+            if extent:
+                self._clear_extent()
             self.events.reload(layer=self)
         # Otherwise, slice immediately on the calling thread.
         else:

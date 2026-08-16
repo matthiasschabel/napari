@@ -51,6 +51,39 @@ def test_async_slice_image_on_current_step_change(
 
 
 @pytest.mark.usefixtures('_enable_async')
+def test_async_slice_change_preserves_extent_cache(
+    make_napari_viewer, qtbot, rng
+):
+    viewer = make_napari_viewer()
+    data = rng.random((3, 4, 5))
+    image = Image(data)
+    vispy_image = setup_viewer_for_async_slicing(viewer, image)
+    cached_extent = image.extent
+
+    viewer.dims.current_step = (2, 0, 0)
+    wait_until_vispy_image_data_equal(qtbot, vispy_image, data[2, :, :])
+
+    assert image.extent is cached_extent
+
+
+@pytest.mark.usefixtures('_enable_async')
+def test_async_data_reload_invalidates_extent_cache(
+    make_napari_viewer, qtbot, rng
+):
+    viewer = make_napari_viewer()
+    image = Image(rng.random((3, 4, 5)))
+    vispy_image = setup_viewer_for_async_slicing(viewer, image)
+    cached_extent = image.extent
+
+    image.data = rng.random((3, 4, 9))
+    step = viewer.dims.current_step[0]
+    wait_until_vispy_image_data_equal(qtbot, vispy_image, image.data[step])
+
+    assert image.extent is not cached_extent
+    np.testing.assert_array_equal(image.extent.data[1], (2, 3, 8))
+
+
+@pytest.mark.usefixtures('_enable_async')
 def test_async_out_of_bounds_layer_loaded(make_napari_viewer, qtbot):
     """Check that images that are out of bounds when slicing appear loaded.
 
