@@ -39,6 +39,21 @@ def test_big_3D_image(make_napari_viewer):
         np.testing.assert_array_equal(layer._transforms['tile2data'].scale, s)
 
 
+def test_shrinking_3d_image_resets_downsample_transform(make_napari_viewer):
+    viewer = make_napari_viewer(ndisplay=3)
+    layer = viewer.add_image(np.zeros((4, 4, 40)), multiscale=False)
+    visual = viewer.window._qt_viewer.canvas.layer_to_visual[layer]
+    visual.MAX_TEXTURE_SIZE_3D = 8
+    layer.refresh()
+
+    downsampled_matrix = visual.node.transform.matrix.copy()
+    assert not np.array_equal(downsampled_matrix, np.eye(4))
+
+    layer.data = np.zeros((4, 4, 4))
+
+    np.testing.assert_array_equal(visual.node.transform.matrix, np.eye(4))
+
+
 @pytest.mark.parametrize(
     'shape',
     [(2, 4), (256, 4048), (4, 20_000), (20_000, 4)],

@@ -1078,6 +1078,7 @@ class VispyCanvas:
             return
 
         callback = self._overlay_callbacks.get(layer)
+        update_child_transforms = False
         for overlay in layer._overlays.values():
             # only create overlays when they are visible. If not, we connect the visible
             # event of this overlay to this method until it's finally visible
@@ -1108,6 +1109,10 @@ class VispyCanvas:
                     parent = self.view
             else:
                 parent = self.layer_to_visual[layer].node
+                update_child_transforms |= (
+                    vispy_overlay is None
+                    or vispy_overlay.node.parent is not parent
+                )
 
             vispy_overlay = self._create_or_update_vispy_overlay(
                 overlay=overlay,
@@ -1118,6 +1123,8 @@ class VispyCanvas:
 
             overlay_to_visual[overlay] = vispy_overlay
 
+        if update_child_transforms:
+            self.layer_to_visual[layer]._on_matrix_change()
         self._update_overlay_canvas_positions()
 
     def _get_ordered_visible_canvas_overlays(

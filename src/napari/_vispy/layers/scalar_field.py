@@ -17,6 +17,15 @@ from napari.layers._scalar_field.scalar_field import ScalarFieldBase
 if TYPE_CHECKING:
     from vispy.scene import Node
 
+_MatrixChangeState = tuple[
+    int,
+    int,
+    tuple[int, ...],
+    tuple[float, ...],
+    tuple[float, ...],
+    tuple[float, ...],
+]
+
 
 class ScalarFieldLayerNode(ABC):
     """Abstract base class for scalar field layer nodes."""
@@ -45,6 +54,7 @@ class VispyScalarFieldBaseLayer(VispyBaseLayer[ScalarFieldBase]):
         layer_node_class=ScalarFieldLayerNode,
         **kwargs,
     ) -> None:
+        self._last_matrix_change_state: _MatrixChangeState | None = None
         # Use custom node from caller, or our standard image/volume nodes.
         self._layer_node = layer_node_class(
             node, texture_format=texture_format
@@ -79,6 +89,7 @@ class VispyScalarFieldBaseLayer(VispyBaseLayer[ScalarFieldBase]):
         self._on_data_change()
 
     def _on_display_change(self, data=None) -> None:
+        self._last_matrix_change_state = None
         parent = self.node.parent
         children = list(self.node.children)
         self.node.parent = None
@@ -146,9 +157,30 @@ class VispyScalarFieldBaseLayer(VispyBaseLayer[ScalarFieldBase]):
             node.set_data(data)
             node.visible = not self.layer._slice.empty and self.layer.visible
 
-        # Call to update order of translation values with new dims:
-        self._on_matrix_change()
+        self._on_matrix_change_if_needed()
         node.update()
+
+    def _on_matrix_change_if_needed(self) -> None:
+        if self.layer.multiscale:
+            self._on_matrix_change()
+            return
+
+        tile_to_data = self.layer._transforms[0]
+        # Every matrix input not captured here must call _on_matrix_change
+        # directly when it changes.
+        state = (
+            self.layer.ndim,
+            self.layer._slice_input.ndisplay,
+            tuple(self.layer._slice_input.displayed),
+            tuple(tile_to_data.linear_matrix.ravel()),
+            tuple(tile_to_data.translate),
+            tuple(self._world_to_layer_units_scale),
+        )
+        if state == self._last_matrix_change_state:
+            return
+
+        self._on_matrix_change()
+        self._last_matrix_change_state = state
 
     def _on_custom_interpolation_kernel_2d_change(self) -> None:
         if self.layer._slice_input.ndisplay == 2:
