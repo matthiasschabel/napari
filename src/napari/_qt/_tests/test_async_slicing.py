@@ -335,7 +335,7 @@ def wait_until_vispy_vectors_data_equal(
         exp_vertices, exp_faces = generate_vector_meshes_2D(
             displayed, 1, 1, 'triangle'
         )
-        meshdata = vispy_layer.node._meshdata
+        meshdata = vispy_layer.node.mesh._meshdata
         vertices = meshdata.get_vertices()
         faces = meshdata.get_faces()
         # invert for vispy
