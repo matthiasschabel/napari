@@ -310,14 +310,32 @@ paths split across 1, 10, and 100 immutable layers, overlay frames were 3.0,
 3.3, and 10.0 ms. Primitive work dominates through moderate layer counts; 100
 layers exposes draw-call overhead but remains near 100 FPS on the audit machine.
 
-The reviewed first implementation is intentionally creation-only. A staged
-shape stays logically present so `layer.data`, selection, and `ADDING`/`ADDED`
-events retain their current behavior, while zero-width committed ranges keep
-aggregate vertices and triangles out of intermediate frames. A private scene
-overlay renders the live shape, and finish performs one aggregate commit.
-Vertex handles and hit-testing must read the staged `Shape` directly. The
-private path is limited to the existing topmost GUI z order; any future
-non-maximal caller falls back to current rendering.
+The reviewed creation-only implementation is now integrated. A staged shape
+stays logically present so `layer.data`, selection, and `ADDING`/`ADDED` events
+retain their current behavior, while zero-width committed ranges keep aggregate
+vertices and triangles out of intermediate frames. The existing Shapes
+highlight mesh renders active faces and edges before outlines and handles, so
+the implementation adds no scene node or draw call. Finish performs one
+aggregate commit. Vertex handles and hit-testing read the staged `Shape`
+directly. The private path is limited to the existing topmost GUI z order; any
+future non-maximal caller falls back to current rendering.
+
+Final GPU-complete results pass every reviewed gate:
+
+| Renderer | Existing paths | Aggregate frame | Staged frame | Gain |
+|---|---:|---:|---:|---:|
+| upstream/main | 10,000 | 82.92 ms | 6.73 ms | 12.3 times |
+| upstream/main | 50,000 | 407.06 ms | 7.56 ms | 53.8 times |
+| combined P0/P1 | 10,000 | 76.54 ms | 1.67 ms | 45.9 times |
+| combined P0/P1 | 50,000 | 409.55 ms | 2.87 ms | 142.8 times |
+
+At 50,000 paths, the combined one-shot commit is 340 ms versus 361 ms for the
+comparison commit. Model mutation plus refresh remains about 0.2 ms at both
+sizes, proving that pointer-frame CPU work is independent of total layer
+geometry. Empty and one-shape A/B frames varied by 0.9 to 1.7 percent, below the
+5 percent regression gate. The combined Shapes and VisPy suite passes 510
+tests; its one failure is the pre-existing constructor docstring-order check in
+integration-only lasso work and is outside the touched lines.
 
 Existing-shape movement is a dependent change. An overlay alone would leave the
 old committed geometry visible, while rebuilding the main mesh at mouse press
@@ -325,9 +343,11 @@ would only relocate the stall. Persistent GPU ranges and partial writes are
 needed to hide and later update one committed shape without a full upload.
 
 The reviewed decision, exact gates, and reusable probes are retained in
-`docs/dev/shapes_active_edit_overlay.md` and `tools/perfmon/` at integration
-commit `b85941cf`. No human escalation or rendered-pixel compromise is needed
-for the creation-only prototype.
+`docs/dev/shapes_active_edit_overlay.md` and `tools/perfmon/`; the production
+implementation is integration commit `62bf44fa`. No human escalation or
+rendered-pixel compromise was needed. Integration conservatively stages only
+layers without non-displayed dimensions, preserving its existing
+multidimensional drawing-anchor semantics.
 
 ### Recommended architecture
 
@@ -385,7 +405,7 @@ mutate GPU resources, and stale payload IDs should be discarded.
 | P1 | Keep Mesh shaders, programs, and buffers persistent | Data-callback ablation saved 46 percent | Non-breaking |
 | P1 | Narrow slice invalidation | Model cost fell from 13.78 to 4.93 ms | Non-breaking |
 | P1 | Cache displayed transforms and update only on transform changes | Major Labels multi-layer cost | Non-breaking |
-| P2 | Add incremental Shapes CPU and GPU storage with an active-edit overlay | Removes total-geometry work from mouse movement | Non-breaking internally |
+| P2 (implemented for creation) | Stage new Shapes outside aggregate CPU geometry and render them through the highlight mesh | 45.9-142.8 times faster on combined P0/P1 | Non-breaking internally |
 | P2 (deferred) | Omit fully transparent face and edge streams | Safe non-default mode gained 7-11 percent for filled layers but regressed outlines; model construction share was about 2 percent | Non-breaking only with blend and interaction semantics preserved |
 | P2 | Add exact viewport culling above measured thresholds | Helps zoomed geometric workloads | Non-breaking when pixel-exact |
 | P2 | Preserve raster textures and use partial or cancellable uploads | Addresses fixed-pixel multi-layer penalty | Non-breaking |
@@ -429,10 +449,11 @@ These should be separate, reviewable changes:
 
 #### P2: Incremental data paths
 
-Shapes should keep committed geometry in persistent, capacity-managed buffers
-while the shape currently being created or edited lives in a small dynamic
-overlay. Commit can update a subrange; compaction can happen during idle time.
-This avoids reallocating and uploading the whole layer during mouse movement.
+New Shapes now stay outside aggregate CPU geometry while being created and use
+the existing highlight mesh as their small dynamic stream. Existing-shape edits
+still need persistent, capacity-managed committed buffers so one range can be
+hidden and updated without rebuilding the whole layer. Commit can then update a
+subrange; compaction can happen during idle time.
 
 Raster work should preserve texture objects, avoid redundant transform and
 colormap updates, and use partial texture updates when dirty regions are known.
@@ -532,14 +553,14 @@ the low-risk stages described above.
 2. Add instrumentation for draw submissions, upload bytes, buffer allocations,
    CPU submission time, and sampled GPU-complete time.
 3. Rebaseline all partition matrices on the combined P0/P1 integration tree.
-4. Implement the reviewed creation-only Shapes staging and private overlay,
-   preserving live data and event semantics and enforcing the measured pointer
-   and commit gates.
+4. Design the dependent existing-shape edit path around hideable committed
+   ranges and partial GPU writes; do not move the full-mesh stall to drag start.
 5. Revisit transparent stream omission only after a render-payload boundary can
    preserve interaction geometry and make transition invalidation cheap.
 6. Prototype exact viewport culling only after the instrumentation can prove
    both its cutoff and its invalidation cost.
 
 P0/P1 is complete. The P2 transparent-stream item is measured and deferred. The
-P2 Shapes active-edit item is measured and accepted for a creation-only
-prototype; its production implementation remains the next milestone.
+P2 Shapes active-edit item is implemented for creation and passes its upstream
+and combined performance gates. Existing-shape movement is the next dependent
+Shapes milestone.

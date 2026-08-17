@@ -162,6 +162,20 @@ The one-shot 50,000-path commit is 343 ms versus 380 ms for the comparison
 commit. A clean-baseline A/B test measured 0.9 to 1.7 percent variance for empty
 and one-shape refresh frames and first draws, below the 5 percent gate.
 
+On the combined P0/P1 integration renderer, persistent Mesh updates reduce the
+staged frame further:
+
+| Existing paths | Aggregate frame | Staged frame | Gain |
+|---:|---:|---:|---:|
+| 10,000 | 76.54 ms | 1.67 ms | 45.9 times |
+| 50,000 | 409.55 ms | 2.87 ms | 142.8 times |
+
+The combined 50,000-path commit is 340 ms versus 361 ms for the comparison
+commit. All combined gates pass. Integration conservatively stages only layers
+without non-displayed dimensions; multidimensional drawing retains its existing
+slice-anchor behavior until staging can support partition changes without
+altering that contract.
+
 The committed visual, aggregate extent cache, selection handles, hit testing,
 and final thumbnail and text are synchronized at finish. The thumbnail and
 text visual intentionally omit the transient in-progress shape; updating them
@@ -193,7 +207,8 @@ frame.
 
 ## Next Steps
 
-1. Measure the implementation on the combined P0/P1 tree.
-2. Extend the staged path to existing-shape movement only after a committed
+1. Extend the staged path to existing-shape movement only after a committed
    range can be hidden without rebuilding or uploading the full mesh.
+2. Add multidimensional staging only with explicit slice-point and partition-
+   change lifecycle coverage.
 3. Validate on other operating systems and GPU classes before upstreaming.
