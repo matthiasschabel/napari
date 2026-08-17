@@ -19,8 +19,12 @@ performance.
 
 Keep the implemented non-breaking P1 optimizations, the creation-only Shapes
 staging path, and conservative viewport culling for very large sparse 2D Points
-layers. Do not ship transparent-triangle omission: its gain is restricted to a
-non-default blend mode and it regresses outline-only rendering.
+layers in the integration branch. Do not prioritize the Points culling path for
+upstream contribution: its 5 million-point minimum targets an unusual workload,
+and the likely benefit to general napari users does not currently justify its
+indexing, lifecycle, and VBO-management complexity. Do not ship
+transparent-triangle omission: its gain is restricted to a non-default blend
+mode and it regresses outline-only rendering.
 
 ### Measured optimization gains
 
@@ -84,6 +88,16 @@ The half-viewport guard amortizes queries and uploads during continuous motion.
 A deliberately adversarial 5 million-point run that crossed the guard every
 frame improved mean time only 1.65 times, from 11.92 ms to 7.24 ms. This is not
 included in the 3.0 to 3.5 times steady-state claim.
+
+### Upstream disposition
+
+Retain viewport culling as a validated integration-only optimization, but do not
+prepare it for upstream submission under the current evidence. Layers at or
+above 5 million points are unlikely to represent the general napari workload,
+and the implementation adds a background spatial index, memory budgeting,
+pre-draw canvas coordination, and private VisPy buffer-view handling. Reconsider
+upstreaming only if user demand emerges or measurements establish a safe,
+material benefit at substantially lower point counts.
 
 ### Scope limits
 
