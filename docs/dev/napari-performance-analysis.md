@@ -274,9 +274,60 @@ outlines, and color-only style reactivation.
 
 The decision, raw samples, exact commands, and reusable probes are retained in
 `docs/dev/shapes_transparent_streams.md` and `tools/perfmon/`. Claude accepted
-the production deferral after plan and implementation convergence review. The
-next P2 target is the active-edit overlay and incremental Shapes storage, which
-may later create a cheap render-only boundary for revisiting omission.
+the production deferral after plan and implementation convergence review.
+
+### P2-2 active-edit overlay evaluation
+
+The active-edit overlay and incremental Shapes boundary is a high-yield target.
+GPU-complete probes kept the large Shapes layer immutable while updating a
+one-shape layer, reproducing the proposed private overlay without changing
+production behavior.
+
+On the combined P0/P1 renderer:
+
+| Existing 32-segment paths | Operation | Current frame | Overlay frame | Gain |
+|---:|---|---:|---:|---:|
+| 10,000 | Shift one path | 45.0 ms | 2.6 ms | 17 times |
+| 50,000 | Shift one path | 233.0 ms | 3.4 ms | 68 times |
+| 10,000 | Grow a path from 2 to 32 vertices | 88.3 ms | 1.5 ms | 59 times |
+| 50,000 | Grow a path from 2 to 32 vertices | 504.0 ms | 3.6 ms | 139 times |
+
+Unmodified upstream/main independently produced 95.8 to 7.4 ms at 10,000
+paths and 466.4 to 8.4 ms at 50,000 paths for shape growth. The one-shot
+commits were 97.0 and 467.7 ms respectively, effectively one current final
+frame rather than a new cost. On the combined renderer, a 30-update 50,000-path
+draw falls from roughly 15 seconds of blocked pointer frames to about 0.5
+seconds total, including the approximately 400 ms release-time commit.
+
+The CPU ablation also rules out a narrow array patch. At 50,000 paths, growing
+one shape took 268.9 ms in the current aggregate path. Skipping the displayed
+gather left 80.0 ms; also skipping global z-order left 13.5 ms; mutating only
+the active `Shape` took 0.041 ms. Total-layer work must leave the pointer path,
+not merely become a somewhat faster copy.
+
+The requested fixed-total scaling remains practical after P0/P1. With 10,000
+paths split across 1, 10, and 100 immutable layers, overlay frames were 3.0,
+3.3, and 10.0 ms. Primitive work dominates through moderate layer counts; 100
+layers exposes draw-call overhead but remains near 100 FPS on the audit machine.
+
+The reviewed first implementation is intentionally creation-only. A staged
+shape stays logically present so `layer.data`, selection, and `ADDING`/`ADDED`
+events retain their current behavior, while zero-width committed ranges keep
+aggregate vertices and triangles out of intermediate frames. A private scene
+overlay renders the live shape, and finish performs one aggregate commit.
+Vertex handles and hit-testing must read the staged `Shape` directly. The
+private path is limited to the existing topmost GUI z order; any future
+non-maximal caller falls back to current rendering.
+
+Existing-shape movement is a dependent change. An overlay alone would leave the
+old committed geometry visible, while rebuilding the main mesh at mouse press
+would only relocate the stall. Persistent GPU ranges and partial writes are
+needed to hide and later update one committed shape without a full upload.
+
+The reviewed decision, exact gates, and reusable probes are retained in
+`docs/dev/shapes_active_edit_overlay.md` and `tools/perfmon/` at integration
+commit `b85941cf`. No human escalation or rendered-pixel compromise is needed
+for the creation-only prototype.
 
 ### Recommended architecture
 
@@ -481,14 +532,14 @@ the low-risk stages described above.
 2. Add instrumentation for draw submissions, upload bytes, buffer allocations,
    CPU submission time, and sampled GPU-complete time.
 3. Rebaseline all partition matrices on the combined P0/P1 integration tree.
-4. Profile interactive Shapes editing to design the smallest incremental CPU and
-   GPU geometry path that removes total-layer work from mouse movement.
+4. Implement the reviewed creation-only Shapes staging and private overlay,
+   preserving live data and event semantics and enforcing the measured pointer
+   and commit gates.
 5. Revisit transparent stream omission only after a render-payload boundary can
    preserve interaction geometry and make transition invalidation cheap.
 6. Prototype exact viewport culling only after the instrumentation can prove
    both its cutoff and its invalidation cost.
 
-P0/P1 is complete. The P2 transparent-stream measurement gate is complete and
-deferred. The next milestone should be a separately reviewed P2 Shapes
-active-edit overlay and incremental-geometry change, selected from fresh
-combined-tree profiles rather than from the original audit alone.
+P0/P1 is complete. The P2 transparent-stream item is measured and deferred. The
+P2 Shapes active-edit item is measured and accepted for a creation-only
+prototype; its production implementation remains the next milestone.
