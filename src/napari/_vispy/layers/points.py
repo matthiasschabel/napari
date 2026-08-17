@@ -4,10 +4,14 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from napari._vispy.layers._points_viewport_culling import (
+    PointsViewportCuller,
+)
 from napari._vispy.layers.base import VispyBaseLayer
 from napari._vispy.utils.gl import BLENDING_MODES
 from napari._vispy.utils.text import _has_visible_text, update_text
 from napari._vispy.visuals.points import PointsVisual
+from napari.layers.base._base_constants import ActionType
 from napari.settings import get_settings
 from napari.utils.colormaps.standardize_color import transform_color
 from napari.utils.events import disconnect_events
@@ -24,6 +28,9 @@ class VispyPointsLayer(VispyBaseLayer):
     def __init__(self, layer, font_info: FontInfo) -> None:
         node = PointsVisual(font_info=font_info)
         super().__init__(layer, node, font_info=font_info)
+        self._viewport_culler = PointsViewportCuller(
+            layer, node.points_markers
+        )
 
         self.layer.events.symbol.connect(self._on_data_change)
         self.layer.events.border_width.connect(self._on_data_change)
@@ -46,10 +53,21 @@ class VispyPointsLayer(VispyBaseLayer):
             self._on_canvas_size_limits_change
         )
         self.layer.events.scale_factor.connect(self._update_text)
+        self.layer.events.mode.connect(self._on_mode_change)
+        self.layer.events.data.connect(self._on_coordinates_change)
 
         self._on_data_change()
 
-    def _on_data_change(self):
+    @property
+    def requires_viewbox_update(self) -> bool:
+        return self._viewport_culler.requires_viewbox_update
+
+    def _prepare_viewbox(
+        self, world_corners: np.ndarray, canvas_size: np.ndarray
+    ) -> None:
+        self._viewport_culler.prepare(world_corners, canvas_size)
+
+    def _on_data_change(self, event=None):
         # Set vispy data, noting that the order of the points needs to be
         # reversed to make the most recently added point appear on top
         # and the rows / columns need to be switched for vispy's x / y ordering
@@ -99,6 +117,9 @@ class VispyPointsLayer(VispyBaseLayer):
             **border_kw,
         )
         self.node.points_markers.visible = has_points
+        self._viewport_culler.marker_payload_changed()
+        if event is None:
+            self._viewport_culler.coordinates_changed()
 
         self.reset()
 
@@ -193,6 +214,18 @@ class VispyPointsLayer(VispyBaseLayer):
             if event.type == 'values':
                 return
         self._update_text()
+        self._viewport_culler.restore_full_view()
+
+    def _on_mode_change(self) -> None:
+        self._viewport_culler.restore_full_view()
+
+    def _on_coordinates_change(self, event) -> None:
+        if event.action in {
+            ActionType.ADDED,
+            ActionType.REMOVED,
+            ActionType.CHANGED,
+        }:
+            self._viewport_culler.coordinates_changed()
 
     def _on_blending_change(self, event=None):
         """Function to set the blending mode"""
@@ -209,6 +242,7 @@ class VispyPointsLayer(VispyBaseLayer):
 
     def _on_antialiasing_change(self):
         self.node.antialias = self.layer.antialiasing
+        self._viewport_culler.padding_changed()
 
     def _on_shading_change(self):
         shading = self.layer.shading
@@ -228,6 +262,7 @@ class VispyPointsLayer(VispyBaseLayer):
             low + highlight_thickness,
             high + highlight_thickness,
         )
+        self._viewport_culler.padding_changed()
         self.node.update()
 
     def reset(self):
@@ -240,5 +275,6 @@ class VispyPointsLayer(VispyBaseLayer):
 
     def close(self):
         """Vispy visual is closing."""
+        self._viewport_culler.close()
         disconnect_events(self.layer.text.events, self)
         super().close()

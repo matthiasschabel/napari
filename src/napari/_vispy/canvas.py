@@ -208,6 +208,8 @@ class VispyCanvas:
         self.grid_cameras = []
 
         self.layer_to_visual: dict[Layer, VispyBaseLayer[Layer]] = {}
+        self._viewbox_layers: set[VispyBaseLayer] = set()
+        self._viewbox_layer_callbacks = {}
         self._viewer_overlay_to_visual: dict[
             Overlay, list[VispyBaseOverlay]
         ] = {}
@@ -243,6 +245,9 @@ class VispyCanvas:
             self._key_map_handler.on_key_release
         )
         self._scene_canvas.events.draw.connect(self.enable_dims_play)
+        self._scene_canvas.events.draw.connect(
+            self._prepare_viewbox_layers, position='first'
+        )
         self._scene_canvas.events.mouse_double_click.connect(
             self._on_mouse_double_click
         )
@@ -804,6 +809,10 @@ class VispyCanvas:
         self.viewer.scene.camera.events.angles.connect(
             vispy_layer._on_camera_move
         )
+        callback = partial(self._update_viewbox_layer, vispy_layer)
+        napari_layer.events.set_data.connect(callback)
+        self._viewbox_layer_callbacks[napari_layer] = callback
+        self._update_viewbox_layer(vispy_layer)
         self._deferred_world_units_update()
 
         # we need to trigger _on_matrix_change once after adding the overlays so that
@@ -849,9 +858,12 @@ class VispyCanvas:
         )
 
         layer.events.units.disconnect(self._deferred_world_units_update)
+        if callback := self._viewbox_layer_callbacks.pop(layer, None):
+            layer.events.set_data.disconnect(callback)
         del self._overlay_callbacks[layer]
 
         vispy_layer = self.layer_to_visual.pop(layer)
+        self._viewbox_layers.discard(vispy_layer)
         disconnect_events(self.viewer.scene.camera.events, vispy_layer)
         vispy_layer.close()
         del vispy_layer
@@ -1342,8 +1354,35 @@ class VispyCanvas:
         # ensure on_draw is run to bring everything up to date
         # needed for some Ubuntu py3.11 pyqt5 tests, but likely inconsistent behavior for other OS.
         # See: https://github.com/napari/napari/pull/7870#issuecomment-2997167180
+        self._prepare_viewbox_layers()
         self.on_draw(None)
         return self.native.grabFramebuffer()
+
+    def _update_viewbox_layer(
+        self, vispy_layer: VispyBaseLayer, event: Event | None = None
+    ) -> None:
+        if vispy_layer.requires_viewbox_update:
+            self._viewbox_layers.add(vispy_layer)
+        else:
+            self._viewbox_layers.discard(vispy_layer)
+
+    def _prepare_viewbox_layers(self, event: Event | None = None) -> None:
+        if not self._viewbox_layers:
+            return
+
+        corners = self._viewbox_corners_in_world
+        canvas_size = np.asarray(self._current_viewbox_size[::-1])
+        for vispy_layer in tuple(self._viewbox_layers):
+            layer = vispy_layer.layer
+            displayed_sorted = sorted(layer._slice_input.displayed)
+            nd = len(displayed_sorted)
+            if nd > self.viewer.dims.ndisplay:
+                displayed_axes = displayed_sorted
+            else:
+                displayed_axes = list(self.viewer.dims.displayed[-nd:])
+            vispy_layer._prepare_viewbox(
+                corners[:, displayed_axes], canvas_size
+            )
 
     def enable_dims_play(self, *args) -> None:
         """Enable playing of animation. False if awaiting a draw event"""

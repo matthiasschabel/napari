@@ -1,11 +1,17 @@
+import time
+from threading import Event
+
 import numpy as np
 import pytest
+from scipy.spatial import cKDTree
 
+from napari._vispy.layers import _points_viewport_culling
 from napari._vispy.layers.points import VispyPointsLayer
 from napari._vispy.utils.qt_font import FontInfo
+from napari._vispy.visuals.markers import Markers
 from napari.components import Dims
 from napari.layers import Points
-from napari.layers.points._points_constants import PointsProjectionMode
+from napari.layers.points._points_constants import Mode, PointsProjectionMode
 
 
 def test_empty_point_visuals_are_hidden_until_data_is_added():
@@ -245,3 +251,308 @@ def test_highlight_with_rescale_projection():
 
     # Previously, raised ValueError: could not broadcast input array from shape (5,) into shape (1,)
     vispy_layer._on_highlight_change()
+
+
+@pytest.mark.parametrize('method', ['instanced', 'points'])
+def test_markers_view_indices_reuse_packed_payload(method):
+    markers = Markers(method=method)
+    positions = np.array([[0, 1], [2, 3], [4, 5]], dtype=float)
+    markers.set_data(
+        positions,
+        size=[5, 6, 7],
+        edge_width=[1, 2, 3],
+        edge_color=['red', 'green', 'blue'],
+        face_color=['white', 'black', 'yellow'],
+        symbol=['o', 's', '*'],
+    )
+    full_data = markers._full_data
+    full_bounds = [markers._compute_bounds(axis, None) for axis in (0, 1)]
+
+    markers.set_view_indices(np.array([0, 2]))
+
+    assert markers._full_data is full_data
+    np.testing.assert_array_equal(markers._data, full_data[[0, 2]])
+    assert [
+        markers._compute_bounds(axis, None) for axis in (0, 1)
+    ] == full_bounds
+    divisor = 1 if method == 'instanced' else None
+    assert all(
+        markers.shared_program[name].divisor == divisor
+        for name in markers._data.dtype.names
+    )
+    assert markers.shared_program['a_position'].size == 2
+    view_vbo = markers._view_vbo
+
+    markers.set_view_indices()
+    assert markers._data is full_data
+    assert markers.shared_program['a_position']._base is markers._full_vbo
+
+    markers.set_view_indices(np.array([0, 2]))
+    assert markers._view_vbo is view_vbo
+    assert markers.shared_program['a_position']._base is view_vbo
+    assert markers.shared_program['a_position'].size == 2
+
+
+def test_points_viewport_culling_preserves_order_and_restores_full_view(
+    monkeypatch,
+):
+    monkeypatch.setattr(_points_viewport_culling, 'MIN_POINTS', 100)
+    row, col = np.mgrid[:101, :101]
+    data = 10 * np.column_stack((row.ravel(), col.ravel())).astype(float)
+    layer = Points(data, size=0.1)
+    visual = VispyPointsLayer(layer, font_info=FontInfo())
+    culler = visual._viewport_culler
+    culler._tree = cKDTree(data)
+    culler._tree_generation = culler._generation
+    full_data = visual.node.points_markers._full_data
+
+    visual._prepare_viewbox(
+        np.array([[0.0, 0.0], [1.0, 1.0]]), np.array([100, 100])
+    )
+
+    indices = culler._view_indices
+    assert indices is not None
+    assert len(indices) < len(data)
+    assert np.all(indices[:-1] < indices[1:])
+    np.testing.assert_array_equal(
+        visual.node.points_markers._data, full_data[indices]
+    )
+
+    payload_bounds = culler._payload_bounds
+    visual._prepare_viewbox(
+        np.array([[0.1, 0.1], [1.1, 1.1]]), np.array([100, 100])
+    )
+    assert culler._view_indices is indices
+    assert culler._payload_bounds is payload_bounds
+
+    visual._prepare_viewbox(
+        np.array([[0.75, 0.75], [1.75, 1.75]]), np.array([100, 100])
+    )
+    assert culler._view_indices is not indices
+
+    visual._prepare_viewbox(
+        np.array([[0.0, 0.0], [1000.0, 1000.0]]), np.array([100, 100])
+    )
+    assert (
+        visual.node.points_markers._vbo is visual.node.points_markers._full_vbo
+    )
+    visual._prepare_viewbox(
+        np.array([[0.0, 0.0], [1.0, 1.0]]), np.array([100, 100])
+    )
+    assert (
+        visual.node.points_markers._vbo is visual.node.points_markers._view_vbo
+    )
+
+    layer.mode = Mode.SELECT
+    assert culler._view_indices is None
+    assert visual.node.points_markers._data is full_data
+
+
+@pytest.mark.parametrize(
+    ('area_ratio', 'uses_subset'),
+    [(0.00149, True), (0.0015, True), (0.00151, False), (1.0, False)],
+)
+def test_points_viewport_area_boundary(monkeypatch, area_ratio, uses_subset):
+    monkeypatch.setattr(_points_viewport_culling, 'MIN_POINTS', 100)
+    row, col = np.mgrid[:101, :101]
+    data = 10 * np.column_stack((row.ravel(), col.ravel())).astype(float)
+    layer = Points(data, size=0.1)
+    visual = VispyPointsLayer(layer, font_info=FontInfo())
+    culler = visual._viewport_culler
+    culler._tree = cKDTree(data)
+    culler._tree_generation = culler._generation
+    width = np.sqrt(area_ratio) * 1000
+
+    visual._prepare_viewbox(
+        np.array([[0.0, 0.0], [width, width]]), np.array([100, 100])
+    )
+
+    assert (culler._view_indices is not None) is uses_subset
+
+
+def test_points_viewport_culling_falls_back_for_visible_text_and_rotation(
+    monkeypatch,
+):
+    monkeypatch.setattr(_points_viewport_culling, 'MIN_POINTS', 100)
+    data = np.linspace(0, 100, 400).reshape(200, 2)
+    layer = Points(data, size=0.1)
+    visual = VispyPointsLayer(layer, font_info=FontInfo())
+    culler = visual._viewport_culler
+    culler._tree = cKDTree(data)
+    culler._tree_generation = culler._generation
+    corners = np.array([[0.0, 0.0], [0.1, 0.1]])
+
+    layer.text = {'string': {'constant': 'point'}}
+    visual._prepare_viewbox(corners, np.array([100, 100]))
+    assert culler._view_indices is None
+
+    layer.text.visible = False
+    layer.rotate = 30
+    visual._prepare_viewbox(corners, np.array([100, 100]))
+    assert culler._view_indices is None
+
+
+def test_points_viewport_padding_includes_canvas_clamp_and_antialiasing():
+    layer = Points(
+        np.array([[0.0, 0.0], [100.0, 100.0]]),
+        size=0.01,
+        border_width=0,
+        canvas_size_limits=(2, 10000),
+    )
+    visual = VispyPointsLayer(layer, font_info=FontInfo())
+
+    _, _, padding = visual._viewport_culler._data_view_bounds(
+        np.array([[0.0, 0.0], [100.0, 100.0]]), np.array([100, 100])
+    )
+
+    # The shader's 2 px body clamp adds a 1 px edge floor and 3 px of
+    # antialiasing on each side, for a 6 px radius.
+    np.testing.assert_allclose(padding, [6, 6])
+
+
+def test_points_coordinate_change_invalidates_viewport_index(monkeypatch):
+    monkeypatch.setattr(_points_viewport_culling, 'MIN_POINTS', 100)
+    data = np.linspace(0, 100, 400).reshape(200, 2)
+    layer = Points(data, size=0.1)
+    visual = VispyPointsLayer(layer, font_info=FontInfo())
+    culler = visual._viewport_culler
+    culler._tree = cKDTree(data)
+    culler._tree_generation = culler._generation
+    generation = culler._generation
+
+    layer.data = data + 1
+
+    assert culler._generation == generation + 1
+    assert culler._tree is None
+    assert culler._view_indices is None
+
+
+def test_points_style_change_retains_viewport_index(monkeypatch):
+    monkeypatch.setattr(_points_viewport_culling, 'MIN_POINTS', 100)
+    data = np.linspace(0, 100, 400).reshape(200, 2)
+    layer = Points(data, size=0.1)
+    visual = VispyPointsLayer(layer, font_info=FontInfo())
+    culler = visual._viewport_culler
+    tree = cKDTree(data)
+    culler._tree = tree
+    culler._tree_generation = culler._generation
+    generation = culler._generation
+
+    layer.size = 0.2
+
+    assert culler._generation == generation
+    assert culler._tree is tree
+
+
+def test_points_viewport_index_builds_in_background(monkeypatch, qtbot):
+    monkeypatch.setattr(_points_viewport_culling, 'MIN_POINTS', 100)
+    data = np.linspace(0, 1000, 4000).reshape(2000, 2)
+    layer = Points(data, size=0.1)
+    visual = VispyPointsLayer(layer, font_info=FontInfo())
+    culler = visual._viewport_culler
+    corners = np.array([[0.0, 0.0], [1.0, 1.0]])
+    canvas_size = np.array([100, 100])
+
+    visual._prepare_viewbox(corners, canvas_size)
+    visual._prepare_viewbox(corners, canvas_size)
+
+    assert culler._worker is not None
+    qtbot.waitUntil(lambda: culler._tree is not None, timeout=5000)
+    assert culler._tree_generation == culler._generation
+    qtbot.waitUntil(lambda: culler._worker is None, timeout=5000)
+    visual.close()
+
+
+def test_points_viewport_index_is_not_built_for_full_view(monkeypatch):
+    monkeypatch.setattr(_points_viewport_culling, 'MIN_POINTS', 100)
+    data = np.linspace(0, 1000, 4000).reshape(2000, 2)
+    layer = Points(data, size=0.1)
+    visual = VispyPointsLayer(layer, font_info=FontInfo())
+    corners = np.array([[0.0, 0.0], [1000.0, 1000.0]])
+    canvas_size = np.array([100, 100])
+
+    visual._prepare_viewbox(corners, canvas_size)
+    visual._prepare_viewbox(corners, canvas_size)
+
+    assert visual._viewport_culler._worker is None
+
+
+def test_points_failed_viewport_index_is_not_retried(monkeypatch):
+    monkeypatch.setattr(_points_viewport_culling, 'MIN_POINTS', 100)
+    data = np.linspace(0, 1000, 4000).reshape(2000, 2)
+    layer = Points(data, size=0.1)
+    visual = VispyPointsLayer(layer, font_info=FontInfo())
+    culler = visual._viewport_culler
+    culler._on_index_ready((culler._generation, None))
+    starts = []
+    monkeypatch.setattr(culler, '_start_index_build', lambda: starts.append(1))
+
+    corners = np.array([[0.0, 0.0], [1.0, 1.0]])
+    visual._prepare_viewbox(corners, np.array([100, 100]))
+    visual._prepare_viewbox(corners, np.array([100, 100]))
+
+    assert starts == []
+
+
+def test_points_payload_rejection_is_cached(monkeypatch):
+    monkeypatch.setattr(_points_viewport_culling, 'MIN_POINTS', 100)
+    rng = np.random.default_rng(0)
+    cluster = rng.uniform(0, 1, (100, 2))
+    data = np.concatenate((cluster, [[1000, 1000], [0, 1000]]))
+    layer = Points(data, size=0.1)
+    visual = VispyPointsLayer(layer, font_info=FontInfo())
+    culler = visual._viewport_culler
+
+    class CountingTree:
+        def __init__(self, values):
+            self._tree = cKDTree(values)
+            self.data = self._tree.data
+            self.mins = self._tree.mins
+            self.maxes = self._tree.maxes
+            self.calls = 0
+
+        def query_ball_point(self, *args, **kwargs):
+            self.calls += 1
+            return self._tree.query_ball_point(*args, **kwargs)
+
+    tree = CountingTree(data)
+    culler._tree = tree
+    culler._tree_generation = culler._generation
+    corners = np.array([[0.0, 0.0], [0.5, 0.5]])
+
+    visual._prepare_viewbox(corners, np.array([100, 100]))
+    visual._prepare_viewbox(corners, np.array([100, 100]))
+
+    assert culler._view_indices is None
+    assert tree.calls == 1
+
+
+def test_points_viewport_close_does_not_wait_for_index_build(
+    monkeypatch, qtbot
+):
+    monkeypatch.setattr(_points_viewport_culling, 'MIN_POINTS', 100)
+    started = Event()
+    release = Event()
+
+    def slow_build(data, generation):
+        started.set()
+        release.wait(timeout=5)
+        return generation, None
+
+    monkeypatch.setattr(_points_viewport_culling, '_build_index', slow_build)
+    data = np.linspace(0, 1000, 4000).reshape(2000, 2)
+    layer = Points(data, size=0.1)
+    visual = VispyPointsLayer(layer, font_info=FontInfo())
+    culler = visual._viewport_culler
+    corners = np.array([[0.0, 0.0], [1.0, 1.0]])
+    visual._prepare_viewbox(corners, np.array([100, 100]))
+    visual._prepare_viewbox(corners, np.array([100, 100]))
+    qtbot.waitUntil(started.is_set, timeout=5000)
+
+    before = time.perf_counter()
+    visual.close()
+    elapsed = time.perf_counter() - before
+    release.set()
+
+    assert elapsed < 0.1
+    qtbot.waitUntil(lambda: culler._worker is None, timeout=5000)

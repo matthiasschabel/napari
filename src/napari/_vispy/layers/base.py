@@ -152,6 +152,15 @@ class VispyBaseLayer(ABC, Generic[_L]):
         self.node.order = order
         self._on_blending_change()
 
+    @property
+    def requires_viewbox_update(self) -> bool:
+        return False
+
+    def _prepare_viewbox(
+        self, world_corners: np.ndarray, canvas_size: np.ndarray
+    ) -> None:
+        """Prepare viewport-dependent rendering before a scene draw."""
+
     @abstractmethod
     def _on_data_change(self):
         raise NotImplementedError
