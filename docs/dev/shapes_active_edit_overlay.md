@@ -1,6 +1,6 @@
 # Shapes Active-Edit Overlay Investigation
 
-**Status:** Active
+**Status:** Implemented
 **Last updated:** 2026-08-16
 **Scope:** Shapes creation interaction, aggregate CPU geometry, and VisPy mesh uploads
 
@@ -97,16 +97,24 @@ rebuild z order and displayed arrays once, emit the existing completion events,
 and refresh the main visual once. Invalid staged paths must remove their
 zero-width ranges without materializing a mesh.
 
-### Overlay rendering
+### Active-shape rendering
 
-Use a private layer scene overlay, not a temporary user-visible Shapes layer.
-Its VisPy adapter reads the active `Shape` object's face and edge geometry plus
-the layer's current colors and width. It must reproduce the committed path:
+Reuse the Shapes highlight mesh for the active geometry rather than adding a
+scene overlay or temporary user-visible Shapes layer. The VisPy adapter reads
+the active `Shape` object's face and edge geometry plus the layer's current
+colors and width. It reproduces the committed path:
 
 - edge vertices use `_edge_vertices + edge_width * _edge_offsets`;
 - NumPy axes are reversed before VisPy submission;
 - 2D layer geometry displayed in 3D is zero-padded;
-- transform, visibility, opacity, and blending follow the owning layer.
+- transform, visibility, opacity, clipping, and blending are inherited from the
+  owning Shapes visual.
+
+Active faces and edges are concatenated before the selection-outline faces in
+the existing highlight mesh. This preserves the established draw order: main
+shape faces, active geometry and outlines, then highlight lines and vertex
+handles. When no shape is staged, the adapter retains the original uniform-
+color highlight path and adds no subvisual or draw call.
 
 GUI creation supplies no z index and `_add_shapes` assigns
 `max(_z_index) + 1`, so the staged shape is strictly topmost and a trailing
@@ -141,6 +149,25 @@ The reviewed plan converged with no unresolved product or architecture issue.
 The prototype remains conditional on the measured gates; no public API or
 settings flag is justified.
 
+### Implementation result
+
+The production staged path now includes normal vertex and outline highlight
+updates. On upstream/main, its final GPU-complete median is 6.73 ms at 10,000
+paths and 7.56 ms at 50,000 paths. The same-run aggregate path is 82.9 and
+407.1 ms, respectively, giving 12.3 and 53.8 times speedups. Intermediate model
+mutation plus refresh remains constant at about 0.3 ms between 10,000 and
+50,000 paths.
+
+The one-shot 50,000-path commit is 343 ms versus 380 ms for the comparison
+commit. A clean-baseline A/B test measured 0.9 to 1.7 percent variance for empty
+and one-shape refresh frames and first draws, below the 5 percent gate.
+
+The committed visual, aggregate extent cache, selection handles, hit testing,
+and final thumbnail and text are synchronized at finish. The thumbnail and
+text visual intentionally omit the transient in-progress shape; updating them
+through the committed layer would restore total-layer work to every pointer
+frame.
+
 ## Alternatives Considered
 
 - Optimizing `_update_displayed()` alone leaves about 80 ms of CPU work before
@@ -166,7 +193,7 @@ settings flag is justified.
 
 ## Next Steps
 
-1. Implement staged creation and the private overlay in the isolated feature
-   tree.
-2. Add focused ShapeList, mouse interaction, VisPy, and GPU-complete tests.
-3. Review the implementation before committing or mirroring production code.
+1. Measure the implementation on the combined P0/P1 tree.
+2. Extend the staged path to existing-shape movement only after a committed
+   range can be hidden without rebuilding or uploading the full mesh.
+3. Validate on other operating systems and GPU classes before upstreaming.

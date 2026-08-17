@@ -1,8 +1,8 @@
 """Measure total-layer work during Shapes creation and movement.
 
 The "overlay" cases keep the large layer immutable and update a one-shape
-layer. They are an implementation-independent ceiling for a private active-edit
-overlay, not a production workaround.
+layer. They remain an implementation-independent ceiling for the production
+active-edit overlay measured by the "staged" cases.
 """
 
 from __future__ import annotations
@@ -139,6 +139,71 @@ def _measure_growth(
     }
 
 
+def _measure_staged_growth(
+    layer: Shapes, canvas, path
+) -> dict[str, dict[str, float]]:
+    layer._is_creating = True
+    layer.add(path[:2], shape_type='path', edge_color='coral', gui=True)
+    index = layer._data_view.staged_index
+    if index is None:
+        raise RuntimeError('GUI path creation did not stage the active shape')
+    layer.selected_data = {index}
+    layer._moving_value = (index, 1)
+    _draw_and_finish(canvas)
+
+    mutate_samples = []
+    refresh_samples = []
+    dirty_draw_samples = []
+    total_samples = []
+    gc_was_enabled = gc.isenabled()
+    gc.disable()
+    try:
+        for stop in range(3, len(path) + 1):
+            started = time.perf_counter()
+            layer._data_view.edit_staged(index, path[:stop])
+            mutated = time.perf_counter()
+            layer.refresh(thumbnail=False, extent=False)
+            refreshed = time.perf_counter()
+            _draw_and_finish(canvas)
+            finished = time.perf_counter()
+            mutate_samples.append(mutated - started)
+            refresh_samples.append(refreshed - mutated)
+            dirty_draw_samples.append(finished - refreshed)
+            total_samples.append(finished - started)
+    finally:
+        if gc_was_enabled:
+            gc.enable()
+
+    return {
+        'mutate': _summarize(mutate_samples),
+        'refresh_set_data': _summarize(refresh_samples),
+        'dirty_draw_finish': _summarize(dirty_draw_samples),
+        'full_frame': _summarize(total_samples),
+    }
+
+
+def _commit_staged(layer: Shapes, canvas) -> dict[str, float]:
+    index = layer._data_view.staged_index
+    if index is None:
+        raise RuntimeError('No staged shape to commit')
+
+    started = time.perf_counter()
+    layer._data_view.commit_staged(index)
+    committed = time.perf_counter()
+    layer._is_creating = False
+    layer._update_dims()
+    layer.events._active_shape()
+    refreshed = time.perf_counter()
+    _draw_and_finish(canvas)
+    finished = time.perf_counter()
+    return {
+        'materialize_ms': 1000 * (committed - started),
+        'refresh_set_data_ms': 1000 * (refreshed - committed),
+        'dirty_draw_finish_ms': 1000 * (finished - refreshed),
+        'total_ms': 1000 * (finished - started),
+    }
+
+
 def run_case(n_shapes: int, n_rays: int, repeats: int) -> dict:
     paths = create_paths(n_shapes, n_rays)
     viewer = napari.Viewer(show=False)
@@ -175,6 +240,9 @@ def run_case(n_shapes: int, n_rays: int, repeats: int) -> dict:
         _draw_and_finish(canvas)
         direct_growth = _measure_growth(main, canvas, new_path)
 
+        staged_growth = _measure_staged_growth(main, canvas, new_path)
+        staged_commit = _commit_staged(main, canvas)
+
         growth_overlay = viewer.add_shapes(
             [new_path[:2]], shape_type='path', edge_color='coral'
         )
@@ -200,6 +268,8 @@ def run_case(n_shapes: int, n_rays: int, repeats: int) -> dict:
             'normal_shift': normal_shift,
             'overlay_shift': overlay_shift,
             'direct_main_growth': direct_growth,
+            'staged_main_growth': staged_growth,
+            'staged_commit': staged_commit,
             'overlay_growth': overlay_growth,
             'overlay_commit': {
                 'model_refresh_set_data_ms': 1000 * (added - started),

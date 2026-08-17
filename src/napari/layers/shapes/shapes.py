@@ -532,6 +532,7 @@ class Shapes(Layer):
             drawing_started=Event,
             drawing_finished=Event,
             preserve_lasso_vertices=Event,
+            _active_shape=Event,
         )
 
         self._preserve_lasso_vertices = False
@@ -918,7 +919,10 @@ class Shapes(Layer):
             # To avoid performance cost of repeated update calls, we batch the updates
             with self._data_view.batched_updates():
                 for i in self.selected_data:
-                    self._data_view.update_edge_width(i, edge_width)
+                    if i == self._data_view.staged_index:
+                        self._data_view.update_staged_edge_width(i, edge_width)
+                    else:
+                        self._data_view.update_edge_width(i, edge_width)
         self.events.edge_width()
 
     @property
@@ -1239,7 +1243,10 @@ class Shapes(Layer):
             widths = [width for _ in range(self.nshapes)]
         with self._data_view.batched_updates():
             for i, width in enumerate(widths):
-                self._data_view.update_edge_width(i, width)
+                if i == self._data_view.staged_index:
+                    self._data_view.update_staged_edge_width(i, width)
+                else:
+                    self._data_view.update_edge_width(i, width)
 
     @property
     def z_index(self):
@@ -1257,6 +1264,9 @@ class Shapes(Layer):
         z_index : int or list of int
             z-index of shapes
         """
+        if self._data_view.staged_index is not None:
+            self._finish_drawing()
+
         if isinstance(z_index, list):
             if not len(z_index) == self.nshapes:
                 raise ValueError(
@@ -2211,6 +2221,12 @@ class Shapes(Layer):
                 face_color=face_color,
                 z_index=z_index,
                 n_new_shapes=n_new_shapes,
+                stage=(
+                    gui
+                    and self._is_creating
+                    and n_new_shapes == 1
+                    and self.ndim == self._slice_input.ndisplay
+                ),
             )
             # This should only emit when programmatically adding as with drawing this leads to premature emit.
             if not gui:
@@ -2330,6 +2346,7 @@ class Shapes(Layer):
         face_color=None,
         z_index=None,
         n_new_shapes=0,
+        stage=False,
     ):
         """Add shapes to the data view.
 
@@ -2372,6 +2389,8 @@ class Shapes(Layer):
             shapes.
         n_new_shapes : int
             The number of new shapes to be added to the Shapes layer.
+        stage : bool
+            Whether one topmost GUI-created shape may bypass aggregate geometry.
         """
         if n_new_shapes > 0:
             total_shapes = n_new_shapes + self.nshapes
@@ -2435,13 +2454,17 @@ class Shapes(Layer):
                 strict=False,
             )
 
-            self._add_shapes_to_view(shape_inputs, self._data_view)
+            self._add_shapes_to_view(
+                shape_inputs, self._data_view, stage=stage
+            )
 
         self._display_order_stored = copy(self._slice_input.order)
         self._ndisplay_stored = copy(self._slice_input.ndisplay)
         self._update_dims()
 
-    def _add_shapes_to_view(self, shape_inputs, data_view: ShapeList):
+    def _add_shapes_to_view(
+        self, shape_inputs, data_view: ShapeList, *, stage: bool = False
+    ):
         """Build new shapes and add them to the _data_view"""
 
         shape_inputs = tuple(shape_inputs)
@@ -2464,15 +2487,31 @@ class Shapes(Layer):
 
         shapes, edge_colors, face_colors = tuple(zip(*sh_inp, strict=False))
 
-        # Add all shapes at once (faster than adding them one by one)
-        data_view.add(
-            shape=shapes,
-            edge_color=edge_colors,
-            face_color=face_colors,
-            z_refresh=False,
+        can_stage = (
+            stage
+            and data_view is self._data_view
+            and len(shapes) == 1
+            and (
+                len(data_view._z_index) == 0
+                or shapes[0].z_index >= np.max(data_view._z_index)
+            )
         )
-
-        data_view._update_z_order()
+        if can_stage:
+            data_view.add_staged(
+                shapes[0],
+                edge_color=edge_colors[0],
+                face_color=face_colors[0],
+            )
+            self.events._active_shape()
+        else:
+            # Add all shapes at once (faster than adding them one by one)
+            data_view.add(
+                shape=shapes,
+                edge_color=edge_colors,
+                face_color=face_colors,
+                z_refresh=False,
+            )
+            data_view._update_z_order()
 
     @property
     def text(self) -> TextManager:
@@ -2511,6 +2550,16 @@ class Shapes(Layer):
 
     def _set_view_slice(self):
         """Set the view given the slicing indices."""
+        slice_key = np.array(self._data_slice.point)[
+            self._slice_input.not_displayed
+        ]
+        if self._data_view.staged_index is not None and (
+            self._slice_input.ndisplay != self._ndisplay_stored
+            or self._slice_input.order != self._display_order_stored
+            or not np.array_equal(slice_key, self._data_view.slice_key)
+        ):
+            self._finish_drawing()
+
         view_changed = False
         with self._data_view.batched_updates():
             ndisplay = self._slice_input.ndisplay
@@ -2527,9 +2576,6 @@ class Shapes(Layer):
                 self._clipboard = {}
                 view_changed = True
 
-            slice_key = np.array(self._data_slice.point)[
-                self._slice_input.not_displayed
-            ]
             if not np.array_equal(slice_key, self._data_view.slice_key):
                 view_changed = True
             self._data_view.slice_key = slice_key
@@ -2622,6 +2668,21 @@ class Shapes(Layer):
         extent: bool = True,
         force: bool = False,
     ) -> None:
+        if self._is_creating and self._data_view.staged_index is not None:
+            # The committed visual stays untouched while the active-shape
+            # subvisual owns the in-progress geometry.
+            if data_displayed:
+                self._clean_outline_cache()
+                self.events._active_shape()
+            super().refresh(
+                event,
+                thumbnail=False,
+                data_displayed=False,
+                highlight=highlight,
+                extent=extent,
+                force=force,
+            )
+            return
         if data_displayed:
             self._clean_outline_cache()
         super().refresh(
@@ -2662,7 +2723,17 @@ class Shapes(Layer):
             # Only consider the hovered shape if it is in view and not already
             # selected (selected shapes are highlighted via selected_in_view).
             value = self._value[0]
-            if value is not None and value not in self._view_indices:
+            staged_index = self._data_view.staged_index
+            value_is_staged_in_view = (
+                value == staged_index
+                and staged_index is not None
+                and self._data_view._displayed[staged_index]
+            )
+            if (
+                value is not None
+                and not value_is_staged_in_view
+                and value not in self._view_indices
+            ):
                 value = None
             if value in selected_in_view:
                 value = None
@@ -2751,11 +2822,27 @@ class Shapes(Layer):
                 ]
             ):
                 # If in one of these mode show the vertices of the shape itself
-                inds = np.isin(
-                    self._data_view.displayed_vertices_to_shape_num,
-                    list(selected_in_view),
-                )
-                vertices = self._data_view.displayed_vertices[inds][:, ::-1]
+                staged_index = self._data_view.staged_index
+                committed_selection = [
+                    i for i in selected_in_view if i != staged_index
+                ]
+                if committed_selection:
+                    inds = np.isin(
+                        self._data_view.displayed_vertices_to_shape_num,
+                        committed_selection,
+                    )
+                    vertices = self._data_view.displayed_vertices[inds][
+                        :, ::-1
+                    ]
+                else:
+                    vertices = np.empty((0, self._slice_input.ndisplay))
+                if staged_index in selected_in_view:
+                    staged_vertices = self._data_view.shapes[
+                        staged_index
+                    ].data_displayed[:, ::-1]
+                    vertices = np.concatenate(
+                        [vertices, staged_vertices], axis=0
+                    )
                 # If currently adding path don't show box over last vertex
                 if self._mode == Mode.ADD_POLYLINE:
                     vertices = vertices[:-1]
@@ -2827,6 +2914,8 @@ class Shapes(Layer):
         # was not then dropped for having too few vertices, counts as added.
         was_creating = self._is_creating
         discarded = False
+        staged_index = self._data_view.staged_index
+        removed_staged = False
         self._is_moving = False
         self._drag_start = None
         self._drag_box = None
@@ -2839,13 +2928,20 @@ class Shapes(Layer):
             if self._mode in {Mode.ADD_PATH, Mode.ADD_POLYLINE}:
                 vertices = self._data_view.shapes[index].data
                 if len(vertices) <= 2:
-                    self._data_view.remove(index)
+                    if index == staged_index:
+                        self._data_view.remove_staged(index)
+                        removed_staged = True
+                    else:
+                        self._data_view.remove(index)
                     discarded = True
                     # Clear selected data to prevent issues.
                     # See https://github.com/napari/napari/pull/6912#discussion_r1601169680
                     self.selected_data.clear()
                 else:
-                    self._data_view.edit(index, vertices[:-1])
+                    if index == staged_index:
+                        self._data_view.edit_staged(index, vertices[:-1])
+                    else:
+                        self._data_view.edit(index, vertices[:-1])
             if self._mode in {Mode.ADD_POLYGON, Mode.ADD_POLYGON_LASSO}:
                 vertices = self._data_view.shapes[index].data
                 if (
@@ -2869,17 +2965,32 @@ class Shapes(Layer):
                             'Experimental > RDP epsilon. ',
                         )
                 if len(vertices) <= 3:
-                    self._data_view.remove(index)
+                    if index == staged_index:
+                        self._data_view.remove_staged(index)
+                        removed_staged = True
+                    else:
+                        self._data_view.remove(index)
                     discarded = True
                     # Clear selected data to prevent issues.
                     # See https://github.com/napari/napari/pull/6912#discussion_r1601169680
                     self.selected_data.clear()
                 else:
-                    self._data_view.edit(
-                        index,
-                        vertices[:-1],
-                        new_type=shape_classes[ShapeType.POLYGON],
-                    )
+                    if index == staged_index:
+                        self._data_view.edit_staged(
+                            index,
+                            vertices[:-1],
+                            new_type=shape_classes[ShapeType.POLYGON],
+                        )
+                    else:
+                        self._data_view.edit(
+                            index,
+                            vertices[:-1],
+                            new_type=shape_classes[ShapeType.POLYGON],
+                        )
+            if staged_index is not None and not removed_staged:
+                self._data_view.commit_staged(staged_index)
+        if removed_staged:
+            self.events._active_shape()
         # Clear the drawing state before callbacks can re-enter through the data setter.
         self._is_creating = False
         # handles the case that
@@ -2894,6 +3005,8 @@ class Shapes(Layer):
             )
             self.events.features()
         self._update_dims()
+        if staged_index is not None and not removed_staged:
+            self.events._active_shape()
 
     @contextmanager
     def block_thumbnail_update(self):
@@ -2949,6 +3062,12 @@ class Shapes(Layer):
         indices : List[int]
             List of indices of shapes to remove from the layer.
         """
+        staged_index = self._data_view.staged_index
+        if staged_index is not None:
+            self._finish_drawing()
+            if staged_index >= self.nshapes:
+                indices = [i for i in indices if i != staged_index]
+
         to_remove = sorted(indices, reverse=True)
 
         if len(indices) > 0:
@@ -3335,6 +3454,8 @@ class Shapes(Layer):
 
     def move_to_front(self) -> None:
         """Moves selected objects to be displayed in front of all others."""
+        if self._data_view.staged_index is not None:
+            self._finish_drawing()
         if len(self.selected_data) == 0:
             return
         new_z_index = max(self._data_view._z_index) + 1
@@ -3344,6 +3465,8 @@ class Shapes(Layer):
 
     def move_to_back(self) -> None:
         """Moves selected objects to be displayed behind all others."""
+        if self._data_view.staged_index is not None:
+            self._finish_drawing()
         if len(self.selected_data) == 0:
             return
         new_z_index = min(self._data_view._z_index) - 1
