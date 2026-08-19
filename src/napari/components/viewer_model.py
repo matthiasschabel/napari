@@ -824,6 +824,10 @@ class ViewerModel(KeymapProvider, MousemapProviderPydantic, EventedModel):
                 list(self.cursor.position) + [0] * dim_diff
             )
 
+        # The world may have been renumbered under an open draw; its lock still
+        # holds the exempt set derived from the old arity.
+        self._reassert_draw_lock()
+
     def _update_mouse_pan(self, event):
         """Set the viewer interactive mouse panning"""
         if event.source is self.layers.selection.active:
@@ -1047,6 +1051,14 @@ class ViewerModel(KeymapProvider, MousemapProviderPydantic, EventedModel):
         The drawing layer takes the navigation lock (as owner), so the sliders,
         2D/3D toggle and axis-order controls are inert until the draw finishes.
         This keeps every vertex on the shape's origin slice (napari #9207).
+
+        Only the axes the layer is actually sliced on are frozen. A layer is
+        sliced on the *trailing* ``layer.ndim`` world axes (see
+        ``_LayerSlicingState.make_slice_input``, which takes ``[-self.ndim:]``
+        of the world slice), so the leading ones cannot change which slice its
+        geometry sits on and are left navigable. A 2D Shapes layer in a 4D
+        viewer therefore keeps both sliders live, while a layer at viewer arity
+        still freezes everything.
         """
         layer = event.source
         prev_owner = self.dims.navigation_lock_owner
@@ -1060,7 +1072,53 @@ class ViewerModel(KeymapProvider, MousemapProviderPydantic, EventedModel):
             finish = getattr(prev_owner, '_finish_drawing', None)
             if finish is not None:
                 finish()
-        self.dims.lock_navigation(layer, lock_order=True)
+        self.dims.lock_navigation(
+            layer, exempt=self._draw_lock_exempt(layer), lock_order=True
+        )
+
+    def _draw_lock_exempt(self, layer: Layer) -> tuple[int, ...]:
+        """Sliders whose position the drawing ``layer`` does not consume.
+
+        Read off the layer's own ``_slice_input``, which is what actually governs
+        slicing, rather than recomputed from the arity difference. Those two agree
+        only in the default axis order: after a roll, ``dims.order`` decides which
+        world axes are displayed, so the axes a layer ignores are not simply the
+        leading ones. Deriving from the slice input keeps one source of truth.
+
+        A padlocked axis is never exempted. ``exempt`` overrides the per-axis
+        locks while an owner lock is held, so including one would silently undo a
+        lock the user asked for.
+        """
+        offset = self.dims.ndim - layer.ndim
+        sliced = {
+            int(axis) + offset for axis in layer._slice_input.not_displayed
+        }
+        locked = self.dims.axis_locked
+        return tuple(
+            axis
+            for axis in self.dims.not_displayed
+            if axis not in sliced and not locked[axis]
+        )
+
+    def _reassert_draw_lock(self) -> None:
+        """Re-take an open draw's lock after the world's dimensionality changed.
+
+        ``dims.ndim`` follows the layer list, so adding or removing an unrelated
+        layer mid-draw renumbers the world while the lock keeps the exempt set it
+        was given. Shrinking from 4D to 3D turned exempt ``(0,)`` — a spare axis
+        of the wider world — into the drawing layer's own slice axis, which then
+        moved and stranded the open shape. Re-deriving is enough: a same-owner
+        re-lock replaces the exempt set, and the shape's own coordinates are
+        unaffected by the renumbering.
+        """
+        owner = self.dims.navigation_lock_owner
+        if owner is None or not isinstance(owner, Layer):
+            return
+        if owner not in self.layers:
+            return
+        self.dims.lock_navigation(
+            owner, exempt=self._draw_lock_exempt(owner), lock_order=True
+        )
 
     def _on_layer_drawing_finished(self, event) -> None:
         """Release the navigation lock taken for a layer's draw."""
