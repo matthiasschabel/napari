@@ -1290,6 +1290,156 @@ def test_shapes_drawing_engages_navigation_lock():
     assert viewer.dims.navigation_lock_owner is None
 
 
+def test_drawing_lock_exempts_axes_the_layer_is_not_sliced_on():
+    """A layer is sliced on its trailing `layer.ndim` world axes, so the leading
+    ones cannot change which slice its geometry sits on and stay navigable."""
+    from napari.layers import Image, Shapes
+
+    viewer = ViewerModel()
+    viewer.add_layer(Image(np.zeros((4, 3, 8, 8))))  # a 4D world
+    layer = viewer.add_layer(Shapes(ndim=2))  # sliced on (y, x) only
+    assert viewer.dims.ndim == 4
+
+    layer._is_creating = True
+    assert viewer.dims.navigation_lock_exempt == (0, 1)
+    for axis in (0, 1):
+        assert viewer.dims.is_axis_movable(axis) is True
+        before = viewer.dims.current_step[axis]
+        viewer.dims.set_current_step(axis, before + 1)
+        assert viewer.dims.current_step[axis] == before + 1
+
+
+def test_drawing_lock_at_viewer_arity_exempts_nothing():
+    """A layer keyed to every axis keeps the blanket freeze: a step on any slider
+    would strand its in-progress shape."""
+    from napari.layers import Shapes
+
+    viewer = ViewerModel()
+    layer = viewer.add_layer(Shapes(ndim=4))
+    assert viewer.dims.ndim == 4
+
+    layer._is_creating = True
+    assert viewer.dims.navigation_lock_exempt == ()
+    for axis in range(2):
+        before = viewer.dims.current_step[axis]
+        viewer.dims.set_current_step(axis, before + 1)
+        assert viewer.dims.current_step[axis] == before
+
+
+def test_drawing_lock_never_exempts_the_slice_axis():
+    """The point of the lock: whatever else is freed, the plane the shape sits on
+    must hold still."""
+    from napari.layers import Image, Shapes
+
+    viewer = ViewerModel()
+    viewer.add_layer(Image(np.zeros((4, 6, 8, 8))))
+    layer = viewer.add_layer(Shapes(ndim=3))  # sliced on (z, y, x)
+    z = viewer.dims.ndim - 3
+
+    layer._is_creating = True
+    assert z not in viewer.dims.navigation_lock_exempt
+    before = viewer.dims.current_step[z]
+    viewer.dims.set_current_step(z, before + 1)
+    assert viewer.dims.current_step[z] == before
+
+
+def test_drawing_lock_exempt_follows_the_axis_order():
+    """After a roll, the axes a layer ignores are not the leading ones.
+
+    `dims.order` decides which world axes are displayed, so the exemption is read
+    off the layer's own slice input rather than recomputed from the arity gap.
+    """
+    from napari.layers import Image, Shapes
+
+    viewer = ViewerModel()
+    viewer.add_layer(Image(np.zeros((4, 5, 6, 7))))
+    layer = viewer.add_layer(Shapes(ndim=3))
+    viewer.dims.order = (1, 2, 3, 0)
+    assert viewer.dims.not_displayed == (1, 2)
+
+    layer._is_creating = True
+    # The layer consumes world axis 1 and ignores world axis 2, so only 2 is free.
+    assert viewer.dims.navigation_lock_exempt == (2,)
+    assert viewer.dims.is_axis_movable(2) is True
+    assert viewer.dims.is_axis_movable(1) is False
+
+
+def test_drawing_lock_is_reasserted_when_the_world_is_renumbered():
+    """Removing an unrelated layer mid-draw must not free the drawing layer's axis.
+
+    `dims.ndim` follows the layer list, so a 4D-to-3D shrink turned exempt `(0,)`
+    — a spare axis of the wider world — into the Shapes layer's own slice axis.
+    """
+    from napari.layers import Image, Shapes
+
+    viewer = ViewerModel()
+    extra = viewer.add_layer(Image(np.zeros((2, 5, 8, 8))))
+    viewer.add_layer(Image(np.zeros((5, 8, 8))))
+    layer = viewer.add_layer(Shapes(ndim=3))
+
+    layer._is_creating = True
+    assert viewer.dims.navigation_lock_exempt == (0,)
+
+    viewer.layers.remove(extra)
+    assert viewer.dims.ndim == 3
+    assert viewer.dims.navigation_lock_exempt == ()
+    before = viewer.dims.current_step[0]
+    viewer.dims.set_current_step(0, before + 1)
+    assert viewer.dims.current_step[0] == before, (
+        "the drawing layer's axis moved"
+    )
+
+
+def test_drawing_lock_reassert_sees_the_reordered_slice_input():
+    """A shrink that also rewrites `dims.order` must re-derive against the new order.
+
+    `_draw_lock_exempt` reads the layer's stored `_slice_input`, so it depends on the
+    layer having been resliced before `_on_layers_change` reasserts the lock. Reducing
+    dimensionality rewrites `order` as well as `ndim`, which would expose a stale read:
+    with old order (1, 2, 3, 0) the layer's own order goes from (0, 1, 2) to (1, 2, 0),
+    moving which world axis it slices on. This pins that the refresh happens first.
+    """
+    from napari.layers import Image, Shapes
+
+    viewer = ViewerModel()
+    extra = viewer.add_layer(Image(np.zeros((2, 5, 8, 8))))
+    viewer.add_layer(Image(np.zeros((5, 8, 8))))
+    layer = viewer.add_layer(Shapes(ndim=3))
+    viewer.dims.order = (1, 2, 3, 0)
+
+    layer._is_creating = True
+    assert viewer.dims.navigation_lock_exempt == (2,)
+
+    viewer.layers.remove(extra)
+    assert viewer.dims.ndim == 3
+    # The layer now slices on world axis 1, so nothing is free.
+    assert viewer.dims.navigation_lock_exempt == ()
+    for axis in range(viewer.dims.ndim):
+        before = viewer.dims.current_step[axis]
+        viewer.dims.set_current_step(axis, before + 1)
+        assert viewer.dims.current_step[axis] == before, (
+            f'axis {axis} moved mid-draw'
+        )
+
+
+def test_drawing_lock_does_not_exempt_a_padlocked_axis():
+    """`exempt` overrides the per-axis locks, so a padlocked axis must stay out of it."""
+    from napari.layers import Image, Shapes
+
+    viewer = ViewerModel()
+    viewer.add_layer(Image(np.zeros((4, 5, 6, 7))))
+    layer = viewer.add_layer(Shapes(ndim=2))
+    viewer.dims.lock_axis(0)
+
+    layer._is_creating = True
+    assert viewer.dims.navigation_lock_exempt == (1,)
+    before = viewer.dims.current_step[0]
+    viewer.dims.set_current_step(0, before + 1)
+    assert viewer.dims.current_step[0] == before, (
+        'a user padlock was undone by a draw'
+    )
+
+
 def test_shapes_locked_draw_blocks_ndisplay_toggle():
     """While a shape is being drawn, the 2D/3D toggle is refused so the displayed
     axes cannot change under the in-progress shape."""
