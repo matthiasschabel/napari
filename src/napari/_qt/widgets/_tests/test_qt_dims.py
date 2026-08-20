@@ -405,8 +405,7 @@ def test_play_button(qtbot, mock_qt_method_ctx, qt_dims):
     os.environ.get('CI') and platform == 'win32',
     reason='not working in windows VM',
 )
-def test_play_popup_closes_on_enter(qtbot, qt_dims):
-    """Enter in the fps spinbox commits the value and dismisses the popup."""
+def test_play_popup_stays_open_on_enter(qtbot, qt_dims):
     qt_dims.dims.ndim = 3
     qtbot.addWidget(qt_dims)
     slider = qt_dims.slider_widgets[0]
@@ -421,7 +420,12 @@ def test_play_popup_closes_on_enter(qtbot, qt_dims):
     qtbot.keyClick(button.fpsspin, Qt.Key.Key_Enter)
 
     assert slider.fps == button.fpsspin.value() == 11
-    assert not button.popup.isVisible()
+    assert button.popup.isVisible()
+
+    # the spinbox used to clear focus, so a second press reached the popup
+    focused = button.popup.focusWidget() or button.popup
+    qtbot.keyClick(focused, Qt.Key.Key_Enter)
+    assert button.popup.isVisible()
 
 
 def test_playback_cycle_time_unit(qtbot, qt_dims):
