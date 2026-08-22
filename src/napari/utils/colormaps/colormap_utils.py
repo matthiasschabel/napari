@@ -265,16 +265,83 @@ def convert_vispy_colormap(colormap, name='vispy'):
     )
 
 
+# Sentinel values the image shader returns from apply_clim to name a value's
+# class. Normalized data is in [0, 1], so anything below SENTINEL_CUTOFF is
+# unambiguously a class marker rather than an intensity. The shader half lives
+# in napari._vispy.visuals.image; both sides must agree, which is why the
+# constants are here, in the module both can import.
+SENTINEL_CUTOFF = -0.5
+NAN_SENTINEL = -1.0
+POS_INF_SENTINEL = -2.0
+NEG_INF_SENTINEL = -3.0
+
+
+def _resolve_exceptional_colors(
+    colormap: Colormap,
+) -> tuple[tuple[float, ...], tuple[float, ...], tuple[float, ...]]:
+    """Resolve each exceptional class to a concrete RGBA, applying fallbacks.
+
+    Mirrors cmap's hierarchy: an infinity falls back to the corresponding
+    saturation color, then to the ramp end it would have reached anyway. Doing
+    this here rather than in the shader keeps the fallback logic in one place
+    and out of the per-fragment path.
+    """
+    colors = np.atleast_2d(np.asarray(colormap.colors, dtype=np.float32))
+
+    def rgba(value, fallback) -> tuple[float, ...]:
+        if value is None:
+            return tuple(float(c) for c in fallback)
+        return tuple(float(c) for c in np.asarray(value).ravel()[:4])
+
+    nan = rgba(colormap.nan_color, (0.0, 0.0, 0.0, 0.0))
+    pos_inf = rgba(
+        colormap.pos_inf_color, rgba(colormap.high_color, colors[-1])
+    )
+    neg_inf = rgba(colormap.neg_inf_color, rgba(colormap.low_color, colors[0]))
+    return nan, pos_inf, neg_inf
+
+
+class _ExceptionalVispyColormap(VispyColormap):
+    """A vispy colormap that decodes the image shader's class sentinels.
+
+    vispy already injects bad, low, and high checks at the top of `glsl_map`.
+    Ours has to run before all of them, because a sentinel is negative and
+    would otherwise be swallowed by the low check. Injecting after
+    `super().__init__` puts it first: each injection prepends at the function
+    opening, so the last one applied ends up outermost.
+    """
+
+    def __init__(self, *args, exceptional_colors=None, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        if exceptional_colors is None:
+            return
+        nan, pos_inf, neg_inf = exceptional_colors
+
+        def vec4(c) -> str:
+            return 'vec4({:.6f}, {:.6f}, {:.6f}, {:.6f})'.format(*c)
+
+        prologue = f"""
+        // napari: exceptional-value classes, ahead of every other check
+        if (t < {NEG_INF_SENTINEL + 0.5}) {{ return {vec4(neg_inf)}; }}
+        if (t < {POS_INF_SENTINEL + 0.5}) {{ return {vec4(pos_inf)}; }}
+        if (t < {SENTINEL_CUTOFF}) {{ return {vec4(nan)}; }}"""
+        self.glsl_map = re.sub(
+            r'float t\) \{', f'float t) {{{prologue}', self.glsl_map
+        )
+
+
 def _napari_cmap_to_vispy(colormap: Colormap) -> VispyColormap:
     """Convert a napari colormap to its equivalent vispy colormap."""
     cmap_args = colormap.model_dump()
     cmap_args.pop('name')
-    # vispy has no equivalent of the infinity colors; the GPU path ignores
-    # them, so drop them rather than letting VispyColormap reject the kwargs.
+    # vispy's Colormap takes no infinity colors. They reach the shader through
+    # the sentinel prologue instead, with their fallbacks already resolved.
     cmap_args.pop('pos_inf_color', None)
     cmap_args.pop('neg_inf_color', None)
     cmap_args['bad_color'] = cmap_args.pop('nan_color')
-    return VispyColormap(**cmap_args)
+    return _ExceptionalVispyColormap(
+        **cmap_args, exceptional_colors=_resolve_exceptional_colors(colormap)
+    )
 
 
 def _validate_rgb(colors, *, tolerance=0.0):
