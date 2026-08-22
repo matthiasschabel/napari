@@ -102,19 +102,36 @@ The user-visible consequence, from the stock-pipeline baseline probe: NaN
 currently renders as the bottom of the colormap, not as `nan_color`. napari's
 NaN support on Apple Silicon is broken today, before any of this work.
 
-**There is a working NaN test that survives.** `(v * 0.0) != 0.0` is true for
-NaN and for both infinities and is not a self-comparison, so the compiler keeps
-it. Subtracting the two infinity tests isolates NaN:
+**A working NaN test exists, but it is not the obvious one, and finding it
+required testing inside a real shader.** The isolated-idiom probe reported
+`(v * 0.0) != 0.0 && !gt_max && !lt_min` as working. It is not: put the same
+expression in a chain beside the infinity tests and it folds to false. Under
+the no-NaN assumption the compiler can reason that `v * 0.0` differs from zero
+only for an infinity, and that the infinity tests then exclude it, so the whole
+conjunction is provably false. Isolation hid that because the surrounding code
+gave it less to prove with.
+
+The mechanism, once visible, rules out a whole family at once. Any form
+comparing against a **single** bound folds, uniform or literal, because
+`v <= X || X <= v` is provable for every X. What survives is **two bounds the
+compiler cannot relate**:
 
 ```glsl
-bool gt_max = v >  3.402823466e+38;   // +inf only
-bool lt_min = v < -3.402823466e+38;   // -inf only
-bool is_nan = (v * 0.0) != 0.0 && !gt_max && !lt_min;
+uniform float u_flt_max;   // a uniform, so its sign is unknown at compile time
+bool is_nan = !(v <= u_flt_max) && !(v >= -u_flt_max);
 ```
 
-This classifies all thirteen probe values correctly here, NaN payload included.
-The infinity tests work unmodified. So a GLSL 1.20 shader can distinguish all
-four classes on this platform without reading any bits.
+Refuting this requires knowing `u_flt_max >= -u_flt_max`, which a uniform
+denies. It classifies all thirteen probe values correctly here, NaN payload
+included, and the infinity tests need no change. So a GLSL 1.20 shader can
+distinguish all four classes on this platform without reading any bits.
+
+The general lesson is bigger than the expression: **no in-shader NaN test is
+guaranteed**, because a compiler assuming no NaN exists is entitled to fold any
+of them. This one works because of what this compiler happens to prove, not
+because it is correct by construction. That is why the harness tests the
+shipped chain rather than an idiom, and why a runtime check belongs in any
+design that depends on it.
 
 **Uploads preserve the classes.** r32f textures work, and the class of every
 probe value survives upload and nearest sampling. Bit-exactness is reported
@@ -127,6 +144,12 @@ occupies 2.0 texels of output under linear sampling against 1.0 under nearest;
 +inf behaves the same. Any classification done after filtering therefore
 misclassifies a one-texel border around every exceptional value whenever the
 image is magnified.
+
+**The proposed napari chain passes end to end.** The `napari_chain` probe
+compiles apply_clim, apply_gamma, and the colormap function as napari would
+generate them, and checks that all thirteen values reach the right color. It
+passes; the stock chain, run in the same process for contrast, misroutes
+neg_inf, pos_inf, and both NaNs. This is now implemented in the fork.
 
 ### What this means for the design
 
