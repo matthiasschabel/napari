@@ -269,6 +269,10 @@ def _napari_cmap_to_vispy(colormap: Colormap) -> VispyColormap:
     """Convert a napari colormap to its equivalent vispy colormap."""
     cmap_args = colormap.model_dump()
     cmap_args.pop('name')
+    # vispy has no equivalent of the infinity colors; the GPU path ignores
+    # them, so drop them rather than letting VispyColormap reject the kwargs.
+    cmap_args.pop('pos_inf_color', None)
+    cmap_args.pop('neg_inf_color', None)
     cmap_args['bad_color'] = cmap_args.pop('nan_color')
     return VispyColormap(**cmap_args)
 
