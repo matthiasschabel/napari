@@ -105,7 +105,8 @@ def _gl_info() -> dict[str, str]:
 
 
 def _render(frag: str, data: np.ndarray, interpolation: str = 'nearest',
-            out_width: int | None = None, uniforms: dict | None = None) -> np.ndarray:
+            out_width: int | None = None, uniforms: dict | None = None,
+            vert: str | None = None) -> np.ndarray:
     """Draw one quad sampling `data` and read the RGBA8 result back.
 
     Returns an (out_width, 4) uint8 array, one row of pixels.
@@ -118,7 +119,7 @@ def _render(frag: str, data: np.ndarray, interpolation: str = 'nearest',
         data, internalformat='r32f', interpolation=interpolation,
         wrapping='clamp_to_edge',
     )
-    program = gloo.Program(VERT, frag)
+    program = gloo.Program(vert or VERT, frag)
     program['a_pos'] = np.array(
         [[-1, -1], [1, -1], [-1, 1], [1, 1]], dtype=np.float32
     )
@@ -317,6 +318,39 @@ PREAMBLES = [
 ]
 
 
+def decode_bits(pixels: np.ndarray, i: int) -> int:
+    """Recover a float32 bit pattern from one RGBA8 pixel.
+
+    The bit shader writes byte k of the pattern into channel k as k/255.0,
+    which round-trips exactly through an 8-bit render target.
+    """
+    return int(
+        int(pixels[i, 0])
+        | (int(pixels[i, 1]) << 8)
+        | (int(pixels[i, 2]) << 16)
+        | (int(pixels[i, 3]) << 24)
+    )
+
+
+def encode_bits(bits: int) -> list[int]:
+    """Inverse of decode_bits; used only to self-test the decode."""
+    return [(bits >> shift) & 0xFF for shift in (0, 8, 16, 24)]
+
+
+def compare_bits(pixels: np.ndarray) -> dict[str, Any]:
+    """Bit-exactness verdicts for every probe value."""
+    per_value = {}
+    for i, name in enumerate(exp.NAMES):
+        got = decode_bits(pixels, i)
+        want = exp.expected_bits(name)
+        per_value[name] = {
+            'got': f'0x{got:08X}',
+            'expected': f'0x{want:08X}',
+            'verdict': PASS if got == want else FAIL,
+        }
+    return per_value
+
+
 @probe('bit_readback')
 def probe_bit_readback() -> dict[str, Any]:
     """Can the shader read a float's bits? That is Option A's precondition.
@@ -359,17 +393,7 @@ def probe_bit_readback() -> dict[str, Any]:
         }
         return result
 
-    per_value = {}
-    for i, name in enumerate(exp.NAMES):
-        got = int(
-            pixels[i, 0] | (pixels[i, 1] << 8) | (pixels[i, 2] << 16) | (pixels[i, 3] << 24)
-        )
-        want = exp.expected_bits(name)
-        per_value[name] = {
-            'got': f'0x{got:08X}',
-            'expected': f'0x{want:08X}',
-            'verdict': PASS if got == want else FAIL,
-        }
+    per_value = compare_bits(pixels)
     result['bit_exact_upload'] = {
         'verdict': PASS if all(v['verdict'] == PASS for v in per_value.values()) else FAIL,
         'per_value': per_value,
@@ -551,13 +575,11 @@ def probe_exploratory_core() -> dict[str, Any]:
         '    gl_Position = vec4(a_pos, 0.0, 1.0);\n'
         '}\n'
     )
-    global VERT
-    saved, VERT = VERT, core_vert
     try:
         with _canvas(data.shape[1]):
             info = _gl_info()
             try:
-                pixels = _render(core_frag, data)
+                pixels = _render(core_frag, data, vert=core_vert)
                 bit_shader, error = PASS, None
             except Exception as e:  # noqa: BLE001
                 pixels, bit_shader = None, UNAVAILABLE
@@ -569,8 +591,6 @@ def probe_exploratory_core() -> dict[str, Any]:
             'error': f'{type(e).__name__}: {e}',
             'caveat': 'exploratory; napari does not request this context',
         }
-    finally:
-        VERT = saved
 
     result = {
         'context_requested': requested,
@@ -580,16 +600,7 @@ def probe_exploratory_core() -> dict[str, Any]:
         'caveat': 'exploratory; napari does not request this context',
     }
     if pixels is not None:
-        result['bit_exact_upload'] = {
-            name: {
-                'got': f'0x{int(pixels[i, 0] | (pixels[i, 1] << 8) | (pixels[i, 2] << 16) | (pixels[i, 3] << 24)):08X}',
-                'expected': f'0x{exp.expected_bits(name):08X}',
-                'verdict': PASS if int(
-                    pixels[i, 0] | (pixels[i, 1] << 8) | (pixels[i, 2] << 16) | (pixels[i, 3] << 24)
-                ) == exp.expected_bits(name) else FAIL,
-            }
-            for i, name in enumerate(exp.NAMES)
-        }
+        result['bit_exact_upload'] = compare_bits(pixels)
     return result
 
 
@@ -625,8 +636,41 @@ def run_in_subprocess(name: str, corrupt: bool = False) -> dict[str, Any]:
     }
 
 
+def self_test_bit_decode() -> int:
+    """Exercise the bit-readback arithmetic without a GLSL 1.30 context.
+
+    On a platform where floatBitsToUint does not compile, that whole path
+    never runs, so a bug in it would surface only on someone else's machine
+    after they had already spent the effort. Feeding it synthetic pixels that
+    encode the known-correct patterns keeps that from happening.
+    """
+    good = np.array(
+        [encode_bits(exp.expected_bits(name)) for name in exp.NAMES], dtype=np.uint8
+    )
+    verdicts = compare_bits(good)
+    wrong = [n for n, v in verdicts.items() if v['verdict'] != PASS]
+    if wrong:
+        print(f'BIT-DECODE SELF-TEST FAILED: correct pixels rejected for {wrong}')
+        return 1
+
+    # and it must reject a single flipped bit, including inside a NaN payload
+    corrupted = good.copy()
+    corrupted[exp.NAMES.index('nan_payload'), 0] ^= 0x01
+    corrupted[exp.NAMES.index('denormal'), 1] ^= 0x80
+    verdicts = compare_bits(corrupted)
+    caught = {n for n, v in verdicts.items() if v['verdict'] == FAIL}
+    if caught != {'nan_payload', 'denormal'}:
+        print(f'BIT-DECODE SELF-TEST FAILED: flipped bits caught for {caught}, '
+              "expected {'nan_payload', 'denormal'}")
+        return 1
+    print('bit-decode self-test: correct patterns accepted, single flipped bits caught')
+    return 0
+
+
 def self_test() -> int:
     """A check that cannot fail is worthless. Prove this one can."""
+    if self_test_bit_decode():
+        return 1
     honest = run_in_subprocess('comparisons')
     corrupt = run_in_subprocess('comparisons', corrupt=True)
     honest_fails = sum(
