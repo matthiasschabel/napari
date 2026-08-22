@@ -32,6 +32,7 @@
     "working_preamble": null
   },
   "comparisons": {
+    "caveat": "An idiom that passes here can still fail inside a real shader. These expressions are evaluated in isolation and their results ORed into an output; a compiler that cannot fold one in that setting may fold it once it sits in a chain beside the infinity tests, because the surrounding code gives it more to prove with. nan_composite is exactly such a case on Apple Silicon. Trust the napari_chain probe, not this one, for what will actually work.",
     "class_preserved_upload": {
       "infinities": "pass",
       "nan": "pass",
@@ -251,6 +252,363 @@
       0.5,
       0.5
     ]
+  },
+  "napari_chain": {
+    "proposed": {
+      "per_value": {
+        "denormal": {
+          "expected": [
+            0,
+            255,
+            255
+          ],
+          "got": [
+            0,
+            255,
+            255
+          ],
+          "verdict": "pass"
+        },
+        "flt_max": {
+          "expected": [
+            255,
+            255,
+            0
+          ],
+          "got": [
+            255,
+            255,
+            0
+          ],
+          "verdict": "pass"
+        },
+        "half": {
+          "expected": [
+            128,
+            128,
+            128
+          ],
+          "got": [
+            128,
+            128,
+            128
+          ],
+          "verdict": "pass"
+        },
+        "nan": {
+          "expected": [
+            255,
+            0,
+            0
+          ],
+          "got": [
+            255,
+            0,
+            0
+          ],
+          "verdict": "pass"
+        },
+        "nan_payload": {
+          "expected": [
+            255,
+            0,
+            0
+          ],
+          "got": [
+            255,
+            0,
+            0
+          ],
+          "verdict": "pass"
+        },
+        "neg_flt_max": {
+          "expected": [
+            0,
+            255,
+            255
+          ],
+          "got": [
+            0,
+            255,
+            255
+          ],
+          "verdict": "pass"
+        },
+        "neg_inf": {
+          "expected": [
+            0,
+            0,
+            255
+          ],
+          "got": [
+            0,
+            0,
+            255
+          ],
+          "verdict": "pass"
+        },
+        "neg_one": {
+          "expected": [
+            0,
+            255,
+            255
+          ],
+          "got": [
+            0,
+            255,
+            255
+          ],
+          "verdict": "pass"
+        },
+        "neg_zero": {
+          "expected": [
+            0,
+            255,
+            255
+          ],
+          "got": [
+            0,
+            255,
+            255
+          ],
+          "verdict": "pass"
+        },
+        "one": {
+          "expected": [
+            255,
+            255,
+            0
+          ],
+          "got": [
+            255,
+            255,
+            0
+          ],
+          "verdict": "pass"
+        },
+        "pos_inf": {
+          "expected": [
+            0,
+            255,
+            0
+          ],
+          "got": [
+            0,
+            255,
+            0
+          ],
+          "verdict": "pass"
+        },
+        "two": {
+          "expected": [
+            255,
+            255,
+            0
+          ],
+          "got": [
+            255,
+            255,
+            0
+          ],
+          "verdict": "pass"
+        },
+        "zero": {
+          "expected": [
+            0,
+            255,
+            255
+          ],
+          "got": [
+            0,
+            255,
+            255
+          ],
+          "verdict": "pass"
+        }
+      },
+      "verdict": "pass",
+      "wrong": []
+    },
+    "stock": {
+      "per_value": {
+        "denormal": {
+          "expected": [
+            0,
+            255,
+            255
+          ],
+          "got": [
+            0,
+            255,
+            255
+          ],
+          "verdict": "pass"
+        },
+        "flt_max": {
+          "expected": [
+            255,
+            255,
+            0
+          ],
+          "got": [
+            255,
+            255,
+            0
+          ],
+          "verdict": "pass"
+        },
+        "half": {
+          "expected": [
+            128,
+            128,
+            128
+          ],
+          "got": [
+            128,
+            128,
+            128
+          ],
+          "verdict": "pass"
+        },
+        "nan": {
+          "expected": [
+            255,
+            0,
+            0
+          ],
+          "got": [
+            0,
+            255,
+            255
+          ],
+          "verdict": "fail"
+        },
+        "nan_payload": {
+          "expected": [
+            255,
+            0,
+            0
+          ],
+          "got": [
+            0,
+            255,
+            255
+          ],
+          "verdict": "fail"
+        },
+        "neg_flt_max": {
+          "expected": [
+            0,
+            255,
+            255
+          ],
+          "got": [
+            0,
+            255,
+            255
+          ],
+          "verdict": "pass"
+        },
+        "neg_inf": {
+          "expected": [
+            0,
+            0,
+            255
+          ],
+          "got": [
+            0,
+            255,
+            255
+          ],
+          "verdict": "fail"
+        },
+        "neg_one": {
+          "expected": [
+            0,
+            255,
+            255
+          ],
+          "got": [
+            0,
+            255,
+            255
+          ],
+          "verdict": "pass"
+        },
+        "neg_zero": {
+          "expected": [
+            0,
+            255,
+            255
+          ],
+          "got": [
+            0,
+            255,
+            255
+          ],
+          "verdict": "pass"
+        },
+        "one": {
+          "expected": [
+            255,
+            255,
+            0
+          ],
+          "got": [
+            255,
+            255,
+            0
+          ],
+          "verdict": "pass"
+        },
+        "pos_inf": {
+          "expected": [
+            0,
+            255,
+            0
+          ],
+          "got": [
+            255,
+            255,
+            0
+          ],
+          "verdict": "fail"
+        },
+        "two": {
+          "expected": [
+            255,
+            255,
+            0
+          ],
+          "got": [
+            255,
+            255,
+            0
+          ],
+          "verdict": "pass"
+        },
+        "zero": {
+          "expected": [
+            0,
+            255,
+            255
+          ],
+          "got": [
+            0,
+            255,
+            255
+          ],
+          "verdict": "pass"
+        }
+      },
+      "verdict": "fail",
+      "wrong": [
+        "neg_inf",
+        "pos_inf",
+        "nan",
+        "nan_payload"
+      ]
+    }
   },
   "stock_baseline": {
     "clim": [

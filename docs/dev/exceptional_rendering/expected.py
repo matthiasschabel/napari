@@ -97,3 +97,49 @@ def expected_stock_gray(name: str, clim: tuple[float, float] = (0.0, 1.0)) -> in
 # The subnormal question is separate from the class question: a driver running
 # with flush-to-zero turns 1e-40 into 0.0 while still reporting it finite.
 DENORMAL_BITS = expected_bits('denormal')
+
+
+# --- proposed napari exceptional-value chain -------------------------------
+#
+# The design routes each class to its own color by returning a sentinel from
+# apply_clim, passing it untouched through apply_gamma, and decoding it in the
+# colormap function before any LUT lookup. Normal t is in [0, 1], so any value
+# below -0.5 is unambiguously a sentinel.
+
+NAN_SENTINEL = -1.0
+POS_INF_SENTINEL = -2.0
+NEG_INF_SENTINEL = -3.0
+
+# Distinct 8-bit colors so a wrong route is obvious in the readback.
+CHAIN_COLORS = {
+    'nan': (255, 0, 0),
+    'pos_inf': (0, 255, 0),
+    'neg_inf': (0, 0, 255),
+    'high': (255, 255, 0),
+    'low': (0, 255, 255),
+}
+
+
+def expected_chain_color(name: str, clim: tuple[float, float] = (0.0, 1.0)):
+    """Which color the proposed chain must produce, computed on the CPU.
+
+    Mirrors vispy's existing epsilon semantics for low and high: a normalized
+    t within 1e-12 of either end takes low_color or high_color rather than the
+    ramp endpoint.
+    """
+    v = float(VALUES[name])
+    if np.isnan(v):
+        return CHAIN_COLORS['nan']
+    if np.isposinf(v):
+        return CHAIN_COLORS['pos_inf']
+    if np.isneginf(v):
+        return CHAIN_COLORS['neg_inf']
+    lo, hi = clim
+    clamped = min(max(v, min(lo, hi)), max(lo, hi))
+    t = (clamped - lo) / (hi - lo)
+    if t <= 1e-12:
+        return CHAIN_COLORS['low']
+    if 1 - t <= 1e-12:
+        return CHAIN_COLORS['high']
+    gray = int(round(t * 255))
+    return (gray, gray, gray)

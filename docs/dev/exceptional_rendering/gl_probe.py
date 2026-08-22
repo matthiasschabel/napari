@@ -279,6 +279,15 @@ def probe_comparisons(corrupt: bool = False) -> dict[str, Any]:
         'idioms': per_idiom,
         'class_via_vispy_chain': classes,
         'working_nan_idioms': [i for i in NAN_IDIOMS if per_idiom[i]['verdict'] == PASS],
+        'caveat': (
+            'An idiom that passes here can still fail inside a real shader. '
+            'These expressions are evaluated in isolation and their results '
+            'ORed into an output; a compiler that cannot fold one in that '
+            'setting may fold it once it sits in a chain beside the infinity '
+            'tests, because the surrounding code gives it more to prove with. '
+            'nan_composite is exactly such a case on Apple Silicon. Trust the '
+            'napari_chain probe, not this one, for what will actually work.'
+        ),
         'class_preserved_upload': {
             'nan': PASS if nan_visible else UNAVAILABLE,
             'infinities': PASS if inf_visible else UNAVAILABLE,
@@ -523,6 +532,136 @@ def probe_filtering() -> dict[str, Any]:
     }
 
 
+
+# The proposed napari chain, written exactly as it would be generated: a
+# replacement apply_clim and apply_gamma (napari overrides ImageVisual's
+# _func_templates) plus a sentinel prologue on the colormap function (napari
+# already subclasses VispyColormap and rewrites glsl_map for labels).
+#
+# The `stock` variant keeps vispy's current NaN idiom so the probe can show
+# the difference on the same driver in the same run.
+CHAIN_FRAG_TEMPLATE = """
+uniform sampler2D u_data;
+uniform vec2 u_clim;
+uniform float u_gamma;
+uniform float u_flt_max;
+varying vec2 v_tex;
+
+float apply_clim(float data) {
+%(clim_body)s
+}
+
+float apply_gamma(float t) {
+%(gamma_body)s
+}
+
+vec4 colormap(float t) {
+%(prologue)s
+    // vispy's own prologues, in the order its re.sub injections leave them
+    if (!(t <= 0.0 || 0.0 <= t)) { return vec4(1.0, 0.0, 1.0, 1.0); }  // bad
+    if (t <= 1e-12) { return vec4(0.0, 1.0, 1.0, 1.0); }               // low
+    if (1.0 - t <= 1e-12) { return vec4(1.0, 1.0, 0.0, 1.0); }         // high
+    float g = clamp(t, 0.0, 1.0);
+    return vec4(g, g, g, 1.0);
+}
+
+void main() {
+    gl_FragColor = colormap(apply_gamma(apply_clim(texture2D(u_data, v_tex).r)));
+}
+"""
+
+STOCK_CLIM_BODY = """    if (!(data <= 0.0 || 0.0 <= data)) return data;
+    data = clamp(data, min(u_clim.x, u_clim.y), max(u_clim.x, u_clim.y));
+    return (data - u_clim.x) / (u_clim.y - u_clim.x);"""
+
+STOCK_GAMMA_BODY = """    if (!(t <= 0.0 || 0.0 <= t)) return t;
+    return pow(t, u_gamma);"""
+
+PROPOSED_CLIM_BODY = f"""    // Classify before clamping: clamping destroys the distinction between an
+    // infinity and a saturated finite value, which is the whole point.
+    bool gt_max = data >  {FLT_MAX_LIT};
+    bool lt_min = data < -{FLT_MAX_LIT};
+    // NaN is the hard one. Under its no-NaN assumption a fast-math compiler
+    // can prove `data <= X || X <= data` for any single bound X, so every
+    // one-bound form folds to false, uniform or literal. Two bounds it cannot
+    // relate do survive: it would have to know u_flt_max < -u_flt_max, and a
+    // uniform denies it that. This is why the bound is a uniform and why the
+    // two comparisons are not against the same value.
+    if (!(data <= u_flt_max) && !(data >= -u_flt_max)) return {exp.NAN_SENTINEL};
+    if (gt_max) return {exp.POS_INF_SENTINEL};
+    if (lt_min) return {exp.NEG_INF_SENTINEL};
+    data = clamp(data, min(u_clim.x, u_clim.y), max(u_clim.x, u_clim.y));
+    return (data - u_clim.x) / (u_clim.y - u_clim.x);"""
+
+PROPOSED_GAMMA_BODY = """    // pow() of a negative base is NaN, so sentinels must bypass it
+    if (t < -0.5) return t;
+    return pow(t, u_gamma);"""
+
+PROPOSED_PROLOGUE = """    // napari sentinel prologue, ahead of every vispy check
+    if (t < -2.5) return vec4(0.0, 0.0, 1.0, 1.0);  // neg_inf
+    if (t < -1.5) return vec4(0.0, 1.0, 0.0, 1.0);  // pos_inf
+    if (t < -0.5) return vec4(1.0, 0.0, 0.0, 1.0);  // nan"""
+
+
+@probe('napari_chain')
+def probe_napari_chain() -> dict[str, Any]:
+    """Does the proposed chain route every class to the right color here?
+
+    This is the design's acceptance test on real hardware, run before the
+    design is written into napari. The stock variant runs beside it so the
+    comparison is against the same driver in the same process.
+    """
+    data = exp.data_array()
+    variants = {
+        'stock': CHAIN_FRAG_TEMPLATE % {
+            'clim_body': STOCK_CLIM_BODY,
+            'gamma_body': STOCK_GAMMA_BODY,
+            'prologue': '',
+        },
+        'proposed': CHAIN_FRAG_TEMPLATE % {
+            'clim_body': PROPOSED_CLIM_BODY,
+            'gamma_body': PROPOSED_GAMMA_BODY,
+            'prologue': PROPOSED_PROLOGUE,
+        },
+    }
+
+    results: dict[str, Any] = {}
+    with _canvas(data.shape[1]):
+        for label, frag in variants.items():
+            try:
+                pixels = _render(
+                    frag, data,
+                    uniforms={
+                        'u_clim': (0.0, 1.0),
+                        'u_gamma': 1.0,
+                        'u_flt_max': float(exp.FLT_MAX),
+                    },
+                )
+            except Exception as e:  # noqa: BLE001
+                results[label] = {'verdict': ERROR, 'error': str(e).splitlines()[0]}
+                continue
+            per_value = {}
+            for i, name in enumerate(exp.NAMES):
+                got = tuple(int(c) for c in pixels[i, :3])
+                want = exp.expected_chain_color(name)
+                per_value[name] = {
+                    'got': got,
+                    'expected': want,
+                    # one 8-bit step of slack on the ramp, exact on the classes
+                    'verdict': PASS
+                    if all(abs(g - w) <= 1 for g, w in zip(got, want, strict=True))
+                    else FAIL,
+                }
+            results[label] = {
+                'verdict': PASS
+                if all(v['verdict'] == PASS for v in per_value.values())
+                else FAIL,
+                'wrong': [n for n, v in per_value.items() if v['verdict'] == FAIL],
+                'per_value': per_value,
+            }
+    return results
+
+
 @probe('exploratory_core_profile')
 def probe_exploratory_core() -> dict[str, Any]:
     """EXPLORATORY ONLY: is a core-profile context reachable, and does it help?
@@ -705,7 +844,10 @@ def summarize(results: dict[str, Any]) -> str:
     comp = results.get('comparisons', {})
     lines.append('')
     lines.append('  GLSL 1.20 idioms:')
-    lines.append(f'    usable NaN tests: {comp.get("working_nan_idioms")}')
+    lines.append(
+        f'    usable in isolation: {comp.get("working_nan_idioms")} '
+        '(see napari_chain for what survives in a real shader)'
+    )
     for idiom, info in comp.get('idioms', {}).items():
         wrong = ', '.join(w['value'] for w in info['wrong'][:4])
         lines.append(f'    {info["verdict"]:<12} {idiom:<16} {wrong}')
@@ -719,6 +861,17 @@ def summarize(results: dict[str, Any]) -> str:
             lines.append(
                 f'    {name:<12} gray={info["gray"]:<4} expected='
                 f'{info["expected_gray"]}  {info["verdict"]}'
+            )
+
+    chain = results.get('napari_chain', {})
+    if chain:
+        lines.append('')
+        lines.append('  proposed napari chain vs stock, same driver:')
+        for label in ('stock', 'proposed'):
+            info = chain.get(label, {})
+            lines.append(
+                f'    {info.get("verdict"):<12} {label:<10} '
+                f'wrong: {info.get("wrong")}'
             )
 
     filt = results.get('filtering', {})
@@ -750,7 +903,7 @@ def main(argv: list[str] | None = None) -> int:
 
     results: dict[str, Any] = {}
     for name in ('env', 'bit_readback', 'comparisons', 'stock_baseline',
-                 'filtering', 'exploratory_core_profile'):
+                 'napari_chain', 'filtering', 'exploratory_core_profile'):
         print(f'running {name} ...', file=sys.stderr)
         results[name] = run_in_subprocess(name)
 
