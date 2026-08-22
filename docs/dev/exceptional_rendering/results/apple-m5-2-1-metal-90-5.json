@@ -1,0 +1,329 @@
+{
+  "bit_readback": {
+    "attempts": {
+      "bare": {
+        "error": "Shader compilation error in GL_FRAGMENT_SHADER: | on line 7: 'bits' : syntax error: syntax error | uint bits = floatBitsToUint(v);",
+        "verdict": "unavailable"
+      },
+      "ext_pragma": {
+        "error": "Shader compilation error in GL_FRAGMENT_SHADER: | on line 3: '' :  extension 'GL_ARB_shader_bit_encoding' is not supported | #extension GL_ARB_shader_bit_encoding : require | on line 10: 'bits' : syntax error: syntax error | uint bits = floatBitsToUint(v);",
+        "verdict": "unavailable"
+      },
+      "version_130": {
+        "error": "Shader compilation error in GL_FRAGMENT_SHADER: | on line 1: '' :  version '130' is not supported | #version 130 | on line 7: 'bits' : syntax error: syntax error | uint bits = floatBitsToUint(v);",
+        "verdict": "unavailable"
+      },
+      "version_130_ext": {
+        "error": "Shader compilation error in GL_FRAGMENT_SHADER: | on line 1: '' :  version '130' is not supported | #version 130 | WARNING: 0:2: extension 'GL_ARB_shader_bit_encoding' is not supported | on line 9: 'bits' : syntax error: syntax error | uint bits = floatBitsToUint(v);",
+        "verdict": "unavailable"
+      }
+    },
+    "bit_exact_upload": {
+      "reason": "floatBitsToUint is unavailable in the context napari creates, so bit preservation cannot be observed from the shader.",
+      "verdict": "unavailable"
+    },
+    "context": {
+      "gl_version": "2.1 Metal - 90.5",
+      "glsl_version": "1.20",
+      "renderer": "Apple M5",
+      "vendor": "Apple"
+    },
+    "option_a_available_in_napari_context": false,
+    "working_preamble": null
+  },
+  "comparisons": {
+    "class_preserved_upload": {
+      "infinities": "pass",
+      "nan": "pass",
+      "note": "class-preserved is weaker evidence than bit-exact: it cannot distinguish \"the value survived upload\" from \"the compiler folded the comparison\". Where no idiom sees a class, this probe reports unavailable rather than fail."
+    },
+    "class_via_vispy_chain": {
+      "denormal": {
+        "expected": "finite",
+        "got": "finite",
+        "verdict": "pass"
+      },
+      "flt_max": {
+        "expected": "finite",
+        "got": "finite",
+        "verdict": "pass"
+      },
+      "half": {
+        "expected": "finite",
+        "got": "finite",
+        "verdict": "pass"
+      },
+      "nan": {
+        "expected": "nan",
+        "got": "nan",
+        "verdict": "pass"
+      },
+      "nan_payload": {
+        "expected": "nan",
+        "got": "nan",
+        "verdict": "pass"
+      },
+      "neg_flt_max": {
+        "expected": "finite",
+        "got": "finite",
+        "verdict": "pass"
+      },
+      "neg_inf": {
+        "expected": "neg_inf",
+        "got": "neg_inf",
+        "verdict": "pass"
+      },
+      "neg_one": {
+        "expected": "finite",
+        "got": "finite",
+        "verdict": "pass"
+      },
+      "neg_zero": {
+        "expected": "finite",
+        "got": "finite",
+        "verdict": "pass"
+      },
+      "one": {
+        "expected": "finite",
+        "got": "finite",
+        "verdict": "pass"
+      },
+      "pos_inf": {
+        "expected": "pos_inf",
+        "got": "pos_inf",
+        "verdict": "pass"
+      },
+      "two": {
+        "expected": "finite",
+        "got": "finite",
+        "verdict": "pass"
+      },
+      "zero": {
+        "expected": "finite",
+        "got": "finite",
+        "verdict": "pass"
+      }
+    },
+    "idioms": {
+      "!(v == v)": {
+        "verdict": "fail",
+        "wrong": [
+          {
+            "expected": true,
+            "got": false,
+            "value": "nan"
+          },
+          {
+            "expected": true,
+            "got": false,
+            "value": "nan_payload"
+          }
+        ]
+      },
+      "abs(v) > 1e38": {
+        "verdict": "pass",
+        "wrong": []
+      },
+      "nan_composite": {
+        "verdict": "pass",
+        "wrong": []
+      },
+      "v != v": {
+        "verdict": "fail",
+        "wrong": [
+          {
+            "expected": true,
+            "got": false,
+            "value": "nan"
+          },
+          {
+            "expected": true,
+            "got": false,
+            "value": "nan_payload"
+          }
+        ]
+      },
+      "v * 0.0 != 0.0": {
+        "verdict": "pass",
+        "wrong": []
+      },
+      "v < -FLT_MAX": {
+        "verdict": "pass",
+        "wrong": []
+      },
+      "v > FLT_MAX": {
+        "verdict": "pass",
+        "wrong": []
+      },
+      "vispy_nan": {
+        "verdict": "fail",
+        "wrong": [
+          {
+            "expected": true,
+            "got": false,
+            "value": "nan"
+          },
+          {
+            "expected": true,
+            "got": false,
+            "value": "nan_payload"
+          }
+        ]
+      }
+    },
+    "working_nan_idioms": [
+      "nan_composite"
+    ]
+  },
+  "env": {
+    "environment": {
+      "gl_version": "2.1 Metal - 90.5",
+      "glsl_version": "1.20",
+      "has_ARB_color_buffer_float": true,
+      "has_ARB_shader_bit_encoding": false,
+      "has_ARB_texture_float": true,
+      "n_extensions": 133,
+      "r32f_texture": "pass",
+      "renderer": "Apple M5",
+      "vendor": "Apple"
+    }
+  },
+  "exploratory_core_profile": {
+    "bit_shader": "unavailable",
+    "caveat": "exploratory; napari does not request this context",
+    "context_obtained": {
+      "gl_version": "2.1 Metal - 90.5",
+      "glsl_version": "1.20",
+      "renderer": "Apple M5",
+      "vendor": "Apple"
+    },
+    "context_requested": {
+      "major": 3,
+      "minor": 3,
+      "profile": "core"
+    },
+    "error": "Shader compilation error in GL_VERTEX_SHADER:"
+  },
+  "filtering": {
+    "inf_source_texel": 9,
+    "linear": {
+      "inf": {
+        "first_texel": 8.5,
+        "last_texel": 10.375,
+        "samples": 16,
+        "texel_span": 2.0
+      },
+      "nan": {
+        "first_texel": 3.5,
+        "last_texel": 5.375,
+        "samples": 16,
+        "texel_span": 2.0
+      }
+    },
+    "nan_source_texel": 4,
+    "nearest": {
+      "inf": {
+        "first_texel": 9.0,
+        "last_texel": 9.875,
+        "samples": 8,
+        "texel_span": 1.0
+      },
+      "nan": {
+        "first_texel": 4.0,
+        "last_texel": 4.875,
+        "samples": 8,
+        "texel_span": 1.0
+      }
+    },
+    "note": "Under nearest sampling a class should occupy exactly one texel (span 1.0). A wider span under linear sampling is interpolation poisoning, and bounds how much of the image Option A would misclassify when zoomed in.",
+    "samples_per_texel": 8,
+    "texels": [
+      0.10000000149011612,
+      0.20000000298023224,
+      0.30000001192092896,
+      0.4000000059604645,
+      "nan",
+      0.6000000238418579,
+      0.699999988079071,
+      0.800000011920929,
+      0.8999999761581421,
+      "inf",
+      0.5,
+      0.5
+    ]
+  },
+  "stock_baseline": {
+    "clim": [
+      0.0,
+      1.0
+    ],
+    "note": "expected_gray is null for NaN: apply_clim passes NaN through and clamp() with a NaN argument is undefined in GLSL. The observed gray is what this driver happens to do.",
+    "per_value": {
+      "denormal": {
+        "expected_gray": 0,
+        "gray": 0,
+        "verdict": "pass"
+      },
+      "flt_max": {
+        "expected_gray": 255,
+        "gray": 255,
+        "verdict": "pass"
+      },
+      "half": {
+        "expected_gray": 128,
+        "gray": 128,
+        "verdict": "pass"
+      },
+      "nan": {
+        "expected_gray": null,
+        "gray": 0,
+        "verdict": "unavailable"
+      },
+      "nan_payload": {
+        "expected_gray": null,
+        "gray": 0,
+        "verdict": "unavailable"
+      },
+      "neg_flt_max": {
+        "expected_gray": 0,
+        "gray": 0,
+        "verdict": "pass"
+      },
+      "neg_inf": {
+        "expected_gray": 0,
+        "gray": 0,
+        "verdict": "pass"
+      },
+      "neg_one": {
+        "expected_gray": 0,
+        "gray": 0,
+        "verdict": "pass"
+      },
+      "neg_zero": {
+        "expected_gray": 0,
+        "gray": 0,
+        "verdict": "pass"
+      },
+      "one": {
+        "expected_gray": 255,
+        "gray": 255,
+        "verdict": "pass"
+      },
+      "pos_inf": {
+        "expected_gray": 255,
+        "gray": 255,
+        "verdict": "pass"
+      },
+      "two": {
+        "expected_gray": 255,
+        "gray": 255,
+        "verdict": "pass"
+      },
+      "zero": {
+        "expected_gray": 0,
+        "gray": 0,
+        "verdict": "pass"
+      }
+    }
+  }
+}
