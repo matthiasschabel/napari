@@ -362,3 +362,20 @@ def test_increment_name_with_number_suffix():
     """
     assert increment_name('test (1)', {'test (1)'}) == 'test (2)'
     assert increment_name('test (1)', {'test (1)', 'test (2)'}) == 'test (3)'
+
+
+def test_napari_cmap_to_vispy_drops_inf_colors():
+    """vispy has no infinity colors; the adapter must not pass them through."""
+    plain = Colormap(np.array([[0, 0, 0, 1], [1, 1, 1, 1]], dtype=float))
+    assert isinstance(_napari_cmap_to_vispy(plain), VispyColormap)
+
+    with_inf = Colormap(
+        np.array([[0, 0, 0, 1], [1, 1, 1, 1]], dtype=float),
+        pos_inf_color=[1, 1, 0, 1],
+        neg_inf_color=[1, 0, 1, 1],
+    )
+    vispy_cmap = _napari_cmap_to_vispy(with_inf)
+    assert isinstance(vispy_cmap, VispyColormap)
+    np.testing.assert_allclose(
+        vispy_cmap.map(np.array([0.0, 1.0])), [[0, 0, 0, 1], [1, 1, 1, 1]]
+    )

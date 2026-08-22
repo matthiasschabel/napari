@@ -80,6 +80,12 @@ class Colormap(EventedModel):
         Mapping for values equal to or greater than 1.
     low_color : ColorValue
         Mapping for values equal to or less than 0.
+    pos_inf_color : ColorValue
+        Mapping for +inf. When None, +inf follows `high_color` if set and the
+        final ramp color otherwise.
+    neg_inf_color : ColorValue
+        Mapping for -inf. When None, -inf follows `low_color` if set and the
+        first ramp color otherwise.
     """
 
     # fields
@@ -93,6 +99,8 @@ class Colormap(EventedModel):
     nan_color: ColorValue = ColorValue('transparent')
     high_color: ColorValue | None = None
     low_color: ColorValue | None = None
+    pos_inf_color: ColorValue | None = None
+    neg_inf_color: ColorValue | None = None
 
     def __init__(
         self, colors, display_name: str | None = None, **data
@@ -170,6 +178,12 @@ class Colormap(EventedModel):
             cols = np.where(values >= 1, self.high_color, cols)
         if self.low_color is not None:
             cols = np.where(values <= 0, self.low_color, cols)
+        # infinities are a tier above high/low: -inf <= 0 and +inf >= 1 are
+        # both True, so these must come last to win over them.
+        if self.pos_inf_color is not None:
+            cols = np.where(np.isposinf(values), self.pos_inf_color, cols)
+        if self.neg_inf_color is not None:
+            cols = np.where(np.isneginf(values), self.neg_inf_color, cols)
 
         return cols
 
@@ -185,6 +199,8 @@ class Colormap(EventedModel):
             and np.all(self.nan_color == other.nan_color)
             and np.all(self.high_color == other.high_color)
             and np.all(self.low_color == other.low_color)
+            and np.all(self.pos_inf_color == other.pos_inf_color)
+            and np.all(self.neg_inf_color == other.neg_inf_color)
         )
 
 
