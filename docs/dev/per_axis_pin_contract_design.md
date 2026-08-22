@@ -1,7 +1,7 @@
 # Per-axis navigation pin: contract, scope and staging
 
 **Status:** Active — blocked on maintainer response to napari#9278
-**Last updated:** 2026-07-26
+**Last updated:** 2026-08-22
 **Scope:** napari `Dims` per-axis navigation pin — `src/napari/components/dims.py`,
 `src/napari/_qt/widgets/qt_dims.py`, `qt_dims_slider.py`,
 `src/napari/_qt/qt_resources/styles/02_custom.qss`
@@ -11,7 +11,18 @@
 > [per_axis_navigation_lock_design.md](per_axis_navigation_lock_design.md) and
 > [navigation_lock_v2_design.md](navigation_lock_v2_design.md)).
 
-## Where this stands (2026-07-26)
+## Where this stands (2026-08-22)
+
+- **napari#9439** — `Dims.point_transition` open as a draft. Independent of the pin, but it
+  is the reporting half: it carries `old_value` / `requested_value` / `value` for every
+  point request, including ones that change nothing. A padlock flash, or any other
+  "your navigation was refused" feedback, should consume it rather than a lock-specific
+  event. See [navigation_lock_v2_design.md](navigation_lock_v2_design.md) for why that is a
+  redesign and not a substitution.
+- `dims-lock-flash-backup` (pre-rebase snapshot, `4b3a3bcf`) deleted 2026-08-22;
+  `feature/dims-lock-flash` carries the same change rebased onto `upstream/main`.
+
+## Where this stood (2026-07-26)
 
 - **napari#9278** — proposing issue filed, awaiting maintainer response. No code is to be
   written against this note until there is a signal that the feature is wanted and that the

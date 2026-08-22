@@ -1,7 +1,7 @@
 # Field-level navigation-lock chokepoint (NAVIGATION_LOCK_VERSION 2)
 
 **Status:** Deferred
-**Last updated:** 2026-07-19
+**Last updated:** 2026-08-22
 **Scope:** napari `Dims` navigation lock — `src/napari/components/dims.py`; interacts with `src/napari/utils/events/evented_model.py` and `src/napari/components/viewer_model.py`
 
 > Placement note: napari's `.gitignore` ignores `docs/` (user docs live in the separate
@@ -36,6 +36,27 @@ methods set so their writes pass; leave `range` open; no-op on a blocked write) 
 reviewed by Codex and **failed on two counts** (B1, B2 below). This note records the
 corrected design, the open contract decisions it forces, and — importantly — whether v2
 is worth building at all.
+
+## Update 2026-08-22 — the chokepoint now exists upstream
+
+napari#9439 (`point_transition`) adds `EventedModel._setattr_context` /
+`_should_use_setattr_context`: an opt-in hook that lets a subclass wrap a field
+assignment without replacing event handling. That is the mechanism this note wanted, and
+`Dims` already opts in for `point` / `current_step`. If #9439 is accepted, v2's guard has
+a sanctioned place to live instead of a bespoke `__setattr__` override.
+
+It also supersedes the two hand-rolled rejection events on the unmerged lock branches:
+`axis_navigation_blocked` (`feature/dims-axis-lock-v1`) and `axis_lock_rejected`
+(`feature/dims-lock-flash`). Both exist only to tell the UI "a navigation request was
+refused", which `point_transition` reports generically as `requested_value != value`.
+
+**This is not a drop-in swap.** Both branches enforce the lock inside `set_point`, which
+strips locked axes *before* assigning `point`, so `requested_value` would carry the
+already-clamped request; v1's `if has_movable_axis:` guard skips the assignment entirely
+when every requested axis is locked, so nothing is emitted at all. Deriving rejections
+from `point_transition` requires moving enforcement to the field level, which is exactly
+v2. The two contract decisions below still need maintainer sign-off, and #9278 is still
+unanswered, so this stays Deferred.
 
 ## Current Decision
 
