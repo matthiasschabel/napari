@@ -25,11 +25,16 @@ in `cmap/docs/dev/mcslab/napari_exceptional_rendering_plan.md`.
   is opt-in and enabled only for the image and tiled-image nodes, because vispy's mesh
   visual feeds the colormap an unclamped normalized value that would otherwise be misread as
   a class. Tile children now use napari's visual and carry their pass-through state across a
-  rebuild. `Colormap.map` uses strict comparisons and the thumbnail no longer clips.
-  Fallback resolution delegates to `Colormap.map`, so the shader cannot disagree with the
-  thumbnails about what a class looks like.
-- **Known behavior change**: the stock `HiLo` colormap marks only values outside the limits
-  rather than values at them. Raised upstream as a draft issue rather than a quiet fix.
+  rebuild. The thumbnail keeps NaN and the infinities out of its clamp, since clipping
+  collapses an infinity onto a limit and gamma turns -inf into NaN. Fallback resolution
+  delegates to `Colormap.map`, so the shader cannot disagree with the thumbnails about what
+  a class looks like.
+- **Considered and reverted**: making `low_color`/`high_color` strict at the endpoints, to
+  match matplotlib's `set_under`/`set_over`. napari's automatic contrast limits are the
+  data's own minimum and maximum, so the extreme pixels of a freshly loaded image sit
+  exactly on the limits; under a strict rule the stock `HiLo` colormap would flag nothing on
+  the images it exists for, and its two-entry table has nowhere to bake the colors instead.
+  The inclusive rule is load-bearing rather than an artifact. No existing behavior changed.
 - **Not covered**: the volume path composes its own shaders and still has the NaN defect;
   masked data has no channel to the GPU. Both are recorded as deferred.
 - **Files affected**: `src/napari/utils/colormaps/colormap.py`,
