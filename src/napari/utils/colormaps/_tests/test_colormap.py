@@ -628,11 +628,16 @@ def _cmap(interpolation, **kwargs):
 
 
 @pytest.mark.parametrize('interpolation', ['linear', 'zero'])
-def test_non_finite_mapping_unchanged_without_inf_colors(interpolation):
-    """Colormaps that do not set the infinity colors map exactly as before.
+def test_out_of_range_colors_apply_strictly_outside(interpolation):
+    """`low_color` and `high_color` are strict, matching matplotlib and cmap.
 
-    The expected arrays are the outputs of napari 0.7 (pre-``pos_inf_color``),
-    so an accidental behavior change for existing colormaps fails here.
+    napari used to apply them at `<= 0` and `>= 1`, so a value sitting exactly
+    on a contrast limit took the out-of-range color. That was a consequence of
+    clamping before classifying: after the clamp an out-of-range value is
+    indistinguishable from one on the limit, and the inclusive test was the
+    only way to catch it. The shader now classifies first, so both paths can
+    be exact, and exact means matplotlib's rule -- `set_under` for x < vmin,
+    `set_over` for x > vmax, endpoints belong to the ramp.
     """
     mid = [0.5, 0.5, 0.5, 1] if interpolation == 'linear' else [1, 1, 1, 1]
 
@@ -656,7 +661,16 @@ def test_non_finite_mapping_unchanged_without_inf_colors(interpolation):
     ).map(NON_FINITE_VALUES)
     npt.assert_allclose(
         with_extremes,
-        [BLUE, BLUE, BLUE, mid, GREEN, GREEN, GREEN, RED],
+        [
+            BLUE,  # -inf falls back to low_color
+            BLUE,  # -0.5 is strictly under
+            [0, 0, 0, 1],  # exactly 0 is in range: the ramp start
+            mid,
+            [1, 1, 1, 1],  # exactly 1 is in range: the ramp end
+            GREEN,  # 1.5 is strictly over
+            GREEN,  # +inf falls back to high_color
+            RED,
+        ],
     )
 
 
@@ -677,9 +691,9 @@ def test_inf_colors_override_high_and_low(interpolation):
         [
             MAGENTA,  # -inf
             BLUE,  # finite under-range keeps low_color
-            BLUE,
+            [0, 0, 0, 1],  # exactly 0 is in range
             mid,
-            GREEN,
+            [1, 1, 1, 1],  # exactly 1 is in range
             GREEN,  # finite over-range keeps high_color
             YELLOW,  # +inf
             RED,  # nan untouched by the infinity colors

@@ -7,8 +7,10 @@ from napari._vispy.visuals.util import TextureMixin
 from napari.utils.colormaps.colormap_utils import (
     NAN_SENTINEL,
     NEG_INF_SENTINEL,
+    OVER_SENTINEL,
     POS_INF_SENTINEL,
     SENTINEL_CUTOFF,
+    UNDER_SENTINEL,
 )
 
 # Largest finite float32. Bound as a uniform, not written as a literal, for the
@@ -23,7 +25,15 @@ _APPLY_CLIM_FLOAT = f"""
         if (data >  $flt_max) return {POS_INF_SENTINEL};
         if (data < -$flt_max) return {NEG_INF_SENTINEL};
 
-        data = clamp(data, min($clim.x, $clim.y), max($clim.x, $clim.y));
+        // Finite out-of-range values are classified here too, and strictly, so
+        // a value sitting exactly on a contrast limit keeps the ramp endpoint
+        // rather than taking the out-of-range color. Recovering this after the
+        // clamp is impossible, which is why the old `>= 1` test caught both.
+        float lo = min($clim.x, $clim.y);
+        float hi = max($clim.x, $clim.y);
+        if (data < lo) return {UNDER_SENTINEL};
+        if (data > hi) return {OVER_SENTINEL};
+
         data = (data - $clim.x) / ($clim.y - $clim.x);
         return data;
     }}"""
