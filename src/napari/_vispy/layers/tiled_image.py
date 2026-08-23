@@ -110,6 +110,14 @@ class TiledImageNode(Compound):
             for ch, (_, dat) in zip(self.adopted_children, tiles, strict=True):
                 ch.set_data(dat)
         else:
+            # Pass-through attributes are forwarded to the children that exist
+            # at assignment time, and this branch replaces all of them. Without
+            # carrying the current values over, a reshape that changes the tile
+            # count silently resets the colormap, contrast limits, gamma, and
+            # interpolation to vispy's defaults.
+            carried = {
+                name: getattr(self, name) for name in PASS_THROUGH_ATTRIBUTES
+            }
             for child in self.adopted_children:
                 child.parent = None
             self._subvisuals: list[BaseVisual] = []
@@ -126,6 +134,9 @@ class TiledImageNode(Compound):
             ):
                 ch.transform = STTransform(translate=offset + (0,))
                 self.add_subvisual(ch)
+            for name, value in carried.items():
+                if value is not None:
+                    setattr(self, name, value)
 
     def set_gl_state(self, *args: Any, **kwargs: Any) -> None:
         for child in self.adopted_children:

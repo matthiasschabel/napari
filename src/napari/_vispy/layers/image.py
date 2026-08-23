@@ -184,12 +184,16 @@ class VispyImageLayer(VispyScalarFieldBaseLayer):
         self._on_iso_threshold_change()
 
     def _on_colormap_change(self, event=None) -> None:
-        # Only the 2D image nodes run the shader that emits class sentinels.
-        # The volume node composes its own shaders and clamps before the
-        # colormap, so it can neither produce nor safely decode them.
+        # Name the nodes that emit class sentinels rather than the ones that
+        # do not: ImageLayerNode can be handed an arbitrary custom node, and a
+        # node that neither produces sentinels nor constrains its colormap
+        # input must not decode them. Failing closed keeps an unknown node on
+        # the ordinary colormap.
         self.node.cmap = _napari_cmap_to_vispy(
             self.layer.colormap,
-            decode_sentinels=not isinstance(self.node, VolumeNode),
+            decode_sentinels=isinstance(
+                self.node, (ImageNode, TiledImageNode)
+            ),
         )
 
     def _update_mip_minip_cutoff(self) -> None:
