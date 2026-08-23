@@ -1076,3 +1076,50 @@ def test_contrast_outside_range():
 def test_docstring():
     validate_all_params_in_docstring(Image)
     validate_kwargs_sorted(Image)
+
+
+def test_thumbnail_colors_exceptional_values_like_the_canvas():
+    """The thumbnail must not collapse infinities onto the contrast limits.
+
+    It is generated on the CPU through Colormap.map while the canvas is
+    rendered on the GPU, and a user compares them side by side without
+    knowing that. The thumbnail used to clip before mapping, so +inf came
+    out as the top of the ramp while the canvas showed pos_inf_color.
+    """
+    cmap = Colormap(
+        [[0, 0, 0, 1], [1, 1, 1, 1]],
+        name='testing',
+        nan_color=[1, 0, 0, 1],
+        pos_inf_color=[0, 1, 0, 1],
+        neg_inf_color=[0, 0, 1, 1],
+    )
+    data = np.full((16, 16), 0.5, dtype=np.float32)
+    data[0, :] = np.nan
+    data[1, :] = np.inf
+    data[2, :] = -np.inf
+    layer = Image(data, colormap=cmap, contrast_limits=(0.0, 1.0))
+
+    colors = {tuple(px) for px in layer.thumbnail.reshape(-1, 4)}
+    assert (255, 0, 0, 255) in colors, 'NaN missing from thumbnail'
+    assert (0, 255, 0, 255) in colors, '+inf missing from thumbnail'
+    assert (0, 0, 255, 255) in colors, '-inf missing from thumbnail'
+
+
+@pytest.mark.parametrize('gamma', [0.5, 2.2])
+def test_thumbnail_exceptional_values_survive_gamma(gamma):
+    """(-inf) ** 0.5 is NaN, so gamma must not touch the classes."""
+    cmap = Colormap(
+        [[0, 0, 0, 1], [1, 1, 1, 1]],
+        name='testing',
+        nan_color=[1, 0, 0, 1],
+        pos_inf_color=[0, 1, 0, 1],
+        neg_inf_color=[0, 0, 1, 1],
+    )
+    data = np.full((16, 16), 0.5, dtype=np.float32)
+    data[1, :] = np.inf
+    data[2, :] = -np.inf
+    layer = Image(data, colormap=cmap, contrast_limits=(0.0, 1.0), gamma=gamma)
+
+    colors = {tuple(px) for px in layer.thumbnail.reshape(-1, 4)}
+    assert (0, 255, 0, 255) in colors
+    assert (0, 0, 255, 255) in colors
