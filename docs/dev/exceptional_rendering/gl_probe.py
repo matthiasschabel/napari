@@ -836,8 +836,16 @@ def summarize(results: dict[str, Any]) -> str:
 
     bits = results.get('bit_readback', {})
     lines.append('')
-    lines.append(f'  Option A in napari context: '
-                 f'{"AVAILABLE" if bits.get("option_a_available_in_napari_context") else "UNAVAILABLE"}'
+    # A crashed suite has no availability key at all. Reporting that as
+    # UNAVAILABLE would claim a measurement nobody made, which is exactly the
+    # distinction the rest of this harness exists to keep.
+    if 'option_a_available_in_napari_context' not in bits:
+        option_a = 'ERROR (suite did not complete)'
+    elif bits['option_a_available_in_napari_context']:
+        option_a = 'AVAILABLE'
+    else:
+        option_a = 'UNAVAILABLE'
+    lines.append(f'  Option A in napari context: {option_a}'
                  f' ({bits.get("working_preamble")})')
     lines.append(f'  bit-exact upload: {bits.get("bit_exact_upload", {}).get("verdict")}')
 
@@ -917,6 +925,15 @@ def main(argv: list[str] | None = None) -> int:
     print(summarize(results))
     print()
     print(f'wrote {out}')
+    # A suite that crashed is not a measurement. Exit non-zero so a caller,
+    # or a CI leg, cannot mistake a partial run for a clean one.
+    errored = sorted(
+        name for name, r in results.items()
+        if isinstance(r, dict) and r.get('verdict') == ERROR
+    )
+    if errored:
+        print(f'suites that did not complete: {", ".join(errored)}', file=sys.stderr)
+        return 1
     return 0
 
 
