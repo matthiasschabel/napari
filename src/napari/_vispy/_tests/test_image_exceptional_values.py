@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 from vispy.scene import PanZoomCamera, SceneCanvas
 
+from napari._vispy.layers.tiled_image import TiledImageNode
 from napari._vispy.visuals.image import (
     _APPLY_CLIM_FLOAT,
     Image as ImageNode,
@@ -17,8 +18,24 @@ from napari._vispy.visuals.image import (
 from napari.utils.colormaps import Colormap
 from napari.utils.colormaps.colormap_utils import _napari_cmap_to_vispy
 
-VALUES = [-np.inf, -1.0, 0.0, 0.5, 1.0, 2.0, np.inf, np.nan]
-NAMES = ['neg_inf', 'under', 'zero', 'half', 'one', 'over', 'pos_inf', 'nan']
+# A guard texel at each end. nan_color is transparent by default, and a
+# transparent fragment is indistinguishable from the canvas background, so
+# without guards a trailing NaN shrinks the detected region and shifts every
+# sample by a fraction of a texel.
+GUARD = 0.5
+VALUES = [GUARD, -np.inf, -1.0, 0.0, 0.5, 1.0, 2.0, np.inf, np.nan, GUARD]
+NAMES = [
+    '_guard_lo',
+    'neg_inf',
+    'under',
+    'zero',
+    'half',
+    'one',
+    'over',
+    'pos_inf',
+    'nan',
+    '_guard_hi',
+]
 
 BLACK_WHITE = [[0, 0, 0, 1], [1, 1, 1, 1]]
 RED = [1, 0, 0, 1]
@@ -30,19 +47,39 @@ CYAN = [0, 1, 1, 1]
 _BACKGROUND = 'magenta'  # nothing in the colormaps under test produces it
 
 
-def render_values(colormap: Colormap, clim=(0.0, 1.0)) -> dict:
+def _plain_node(data, view, vispy_cmap, clim):
+    ImageNode(
+        data,
+        cmap=vispy_cmap,
+        clim=clim,
+        interpolation='nearest',
+        texture_format='auto',
+        parent=view.scene,
+    )
+
+
+def _tiled_node(data, view, vispy_cmap, clim):
+    """The path taken when an image exceeds the GPU's texture size limit."""
+    node = TiledImageNode(data, tile_size=4, texture_format='auto')
+    node.parent = view.scene
+    node.cmap = vispy_cmap
+    node.clim = clim
+    node.interpolation = 'nearest'
+
+
+def render_values(
+    colormap: Colormap, clim=(0.0, 1.0), node=_plain_node
+) -> dict:
     """Render one texel per probe value and return its RGB, keyed by name."""
     data = np.tile(np.array(VALUES, dtype=np.float32), (8, 1))
     canvas = SceneCanvas(size=(64, 64), show=False, bgcolor=_BACKGROUND)
     try:
         view = canvas.central_widget.add_view()
-        ImageNode(
+        node(
             data,
-            cmap=_napari_cmap_to_vispy(colormap),
-            clim=clim,
-            interpolation='nearest',
-            texture_format='auto',
-            parent=view.scene,
+            view,
+            _napari_cmap_to_vispy(colormap, decode_sentinels=True),
+            clim,
         )
         view.camera = PanZoomCamera(aspect=1)
         view.camera.set_range(x=(0, len(VALUES)), y=(0, 8), margin=0)
@@ -131,6 +168,32 @@ def test_infinities_fall_back_to_the_ramp_ends():
     assert rendered['pos_inf'] == (255, 255, 255)
 
 
+@pytest.mark.usefixtures('qapp')
+def test_tiled_rendering_matches_untiled():
+    """An image must not change appearance when it crosses the texture limit.
+
+    Images too large for one texture are split across child nodes by
+    TiledImageNode. Those children built vispy's Image rather than napari's,
+    so they kept the stock shader: NaN came out as low_color and +inf as
+    high_color on exactly the same data that rendered correctly untiled.
+    """
+    cmap = Colormap(
+        BLACK_WHITE,
+        name='testing',
+        nan_color=RED,
+        pos_inf_color=GREEN,
+        neg_inf_color=BLUE,
+        high_color=YELLOW,
+        low_color=CYAN,
+    )
+    untiled = render_values(cmap, node=_plain_node)
+    tiled = render_values(cmap, node=_tiled_node)
+    assert tiled == untiled
+    # and the classes are actually distinct, so the comparison is not vacuous
+    assert tiled['nan'] == as_rgb(RED)
+    assert tiled['pos_inf'] == as_rgb(GREEN)
+
+
 def test_nan_test_uses_two_uniform_bounds():
     """Guard the property the NaN test depends on.
 
@@ -149,10 +212,46 @@ def test_nan_test_uses_two_uniform_bounds():
 def test_colormap_prologue_resolves_fallbacks_on_the_cpu():
     """Fallback resolution belongs off the per-fragment path."""
     glsl = _napari_cmap_to_vispy(
-        Colormap(BLACK_WHITE, name='testing', high_color=YELLOW)
+        Colormap(BLACK_WHITE, name='testing', high_color=YELLOW),
+        decode_sentinels=True,
     ).glsl_map
     # +inf falls back to high_color, -inf to the first ramp color
     assert 'vec4(1.000000, 1.000000, 0.000000, 1.000000)' in glsl
     assert 'vec4(0.000000, 0.000000, 0.000000, 1.000000)' in glsl
     # and the prologue precedes every check vispy injects
     assert glsl.index('exceptional-value classes') < glsl.index('bad_color')
+
+
+def test_sentinel_decoding_is_off_by_default():
+    """Only a visual that emits sentinels may decode them.
+
+    vispy's mesh visual feeds the colormap an unclamped
+    (val - cmin) / (cmax - cmin), so a surface vertex below the contrast
+    limits arrives as a large negative t. If the prologue were unconditional,
+    that legitimate under-range value would be painted with nan_color or an
+    infinity color, on a default colormap as much as a configured one.
+    """
+    plain = _napari_cmap_to_vispy(Colormap(BLACK_WHITE, name='testing'))
+    assert 'exceptional-value classes' not in plain.glsl_map
+    opted_in = _napari_cmap_to_vispy(
+        Colormap(BLACK_WHITE, name='testing'), decode_sentinels=True
+    )
+    assert 'exceptional-value classes' in opted_in.glsl_map
+
+
+@pytest.mark.usefixtures('qapp')
+def test_surface_colormap_leaves_under_range_values_alone():
+    """Regression: the surface path must not decode sentinels."""
+    from napari._vispy.layers.surface import VispySurfaceLayer
+    from napari._vispy.utils.qt_font import FontInfo
+    from napari.layers import Surface
+
+    vertices = np.array([[0, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float32)
+    faces = np.array([[0, 1, 2]])
+    # a vertex value well below the contrast limits: normalized t = -2.0,
+    # which is the +inf sentinel
+    values = np.array([-2.0, 0.5, 1.0], dtype=np.float32)
+    layer = Surface((vertices, faces, values))
+    layer.contrast_limits = (0.0, 1.0)
+    visual = VispySurfaceLayer(layer, font_info=FontInfo())
+    assert 'exceptional-value classes' not in visual.node.cmap.glsl_map

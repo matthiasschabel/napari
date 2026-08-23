@@ -330,8 +330,20 @@ class _ExceptionalVispyColormap(VispyColormap):
         )
 
 
-def _napari_cmap_to_vispy(colormap: Colormap) -> VispyColormap:
-    """Convert a napari colormap to its equivalent vispy colormap."""
+def _napari_cmap_to_vispy(
+    colormap: Colormap, *, decode_sentinels: bool = False
+) -> VispyColormap:
+    """Convert a napari colormap to its equivalent vispy colormap.
+
+    `decode_sentinels` must be set only for a visual whose shader actually
+    emits the class sentinels, which today means napari's image visual. It is
+    off by default because the sentinel range is not otherwise unreachable:
+    vispy's mesh visual feeds the colormap an *unclamped* `(val - cmin) /
+    (cmax - cmin)` (vispy/visuals/mesh.py), so a surface vertex below the
+    contrast limits arrives as a large negative t. Decoding those as classes
+    would paint legitimate under-range data with nan_color or an infinity
+    color, on default colormaps as much as on configured ones.
+    """
     cmap_args = colormap.model_dump()
     cmap_args.pop('name')
     # vispy's Colormap takes no infinity colors. They reach the shader through
@@ -339,6 +351,8 @@ def _napari_cmap_to_vispy(colormap: Colormap) -> VispyColormap:
     cmap_args.pop('pos_inf_color', None)
     cmap_args.pop('neg_inf_color', None)
     cmap_args['bad_color'] = cmap_args.pop('nan_color')
+    if not decode_sentinels:
+        return VispyColormap(**cmap_args)
     return _ExceptionalVispyColormap(
         **cmap_args, exceptional_colors=_resolve_exceptional_colors(colormap)
     )

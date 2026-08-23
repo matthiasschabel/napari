@@ -184,7 +184,13 @@ class VispyImageLayer(VispyScalarFieldBaseLayer):
         self._on_iso_threshold_change()
 
     def _on_colormap_change(self, event=None) -> None:
-        self.node.cmap = _napari_cmap_to_vispy(self.layer.colormap)
+        # Only the 2D image nodes run the shader that emits class sentinels.
+        # The volume node composes its own shaders and clamps before the
+        # colormap, so it can neither produce nor safely decode them.
+        self.node.cmap = _napari_cmap_to_vispy(
+            self.layer.colormap,
+            decode_sentinels=not isinstance(self.node, VolumeNode),
+        )
 
     def _update_mip_minip_cutoff(self) -> None:
         # discard fragments beyond contrast limits, but only with translucent blending
