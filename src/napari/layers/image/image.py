@@ -584,11 +584,19 @@ class Image(IntensityVisualizationMixin, ScalarFieldBase):
             if np.issubdtype(downsampled.dtype, np.integer):
                 low = max(low, np.iinfo(downsampled.dtype).min)
                 high = min(high, np.iinfo(downsampled.dtype).max)
-            downsampled = np.clip(downsampled, low, high)
+            # Normalize the finite values and leave NaN and the infinities
+            # alone. The colormap has its own color for each of those classes
+            # and needs to still see them to apply it; clipping would collapse
+            # an infinity onto a contrast limit, and raising it to a power
+            # would turn -inf into NaN. Without this the thumbnail disagrees
+            # with the canvas, which classifies before it clamps.
+            downsampled = downsampled.astype(float, copy=True)
+            finite = np.isfinite(downsampled)
             color_range = high - low
+            values = np.clip(downsampled[finite], low, high)
             if color_range != 0:
-                downsampled = (downsampled - low) / color_range
-            downsampled = downsampled**self.gamma
+                values = (values - low) / color_range
+            downsampled[finite] = values**self.gamma
             color_array = self.colormap.map(downsampled.ravel())
             colormapped = color_array.reshape((*downsampled.shape, 4))
             colormapped[..., 3] *= self.opacity
