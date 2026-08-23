@@ -115,9 +115,18 @@ class TiledImageNode(Compound):
             # carrying the current values over, a reshape that changes the tile
             # count silently resets the colormap, contrast limits, gamma, and
             # interpolation to vispy's defaults.
-            carried = {
-                name: getattr(self, name) for name in PASS_THROUGH_ATTRIBUTES
-            }
+            # Read from a child, not from self. These names are forwarded to
+            # the children and never stored on the node, but `opacity` is also
+            # a real VisualNode property, so `getattr(self, 'opacity')` returns
+            # the node's own untouched default rather than what was assigned.
+            carried = (
+                {
+                    name: getattr(self.adopted_children[0], name)
+                    for name in PASS_THROUGH_ATTRIBUTES
+                }
+                if self.adopted_children
+                else {}
+            )
             for child in self.adopted_children:
                 child.parent = None
             self._subvisuals: list[BaseVisual] = []

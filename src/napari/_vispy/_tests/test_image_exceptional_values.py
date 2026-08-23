@@ -332,3 +332,48 @@ def test_gpu_agrees_with_cpu_on_every_class(kwargs):
         assert rendered[name] == pytest.approx(composited, abs=1), (
             f'{name}: GPU {rendered[name]} disagrees with CPU {cpu}'
         )
+
+
+@pytest.mark.usefixtures('qapp')
+def test_retiling_preserves_every_pass_through_attribute():
+    """Each forwarded attribute must survive a tile-count change.
+
+    The render comparison only exercises the ones that change pixels, and
+    `opacity` is the awkward case: it is forwarded to the children like the
+    rest, but it is also a real VisualNode property, so reading it off the
+    node returns the node's untouched default rather than what was assigned.
+    """
+    from napari._vispy.layers.tiled_image import (
+        PASS_THROUGH_ATTRIBUTES,
+        TiledImageNode,
+    )
+
+    data = np.zeros((8, 8), dtype=np.float32)
+    node = TiledImageNode(data, tile_size=4, texture_format='auto')
+    node.cmap = _napari_cmap_to_vispy(
+        Colormap(BLACK_WHITE, name='testing'), decode_sentinels=True
+    )
+    node.clim = (0.0, 1.0)
+    node.gamma = 2.0
+    node.opacity = 0.5
+    node.interpolation = 'nearest'
+
+    before = {
+        name: getattr(node.adopted_children[0], name)
+        for name in PASS_THROUGH_ATTRIBUTES
+    }
+    node.tile_size = 2
+    node.set_data(data)  # different tile count: every child is rebuilt
+    after = {
+        name: getattr(node.adopted_children[0], name)
+        for name in PASS_THROUGH_ATTRIBUTES
+    }
+
+    assert len(node.adopted_children) == 16
+    for name in PASS_THROUGH_ATTRIBUTES:
+        if isinstance(before[name], np.ndarray):
+            np.testing.assert_array_equal(
+                after[name], before[name], err_msg=f'{name} not carried over'
+            )
+        else:
+            assert after[name] == before[name], f'{name} not carried over'
