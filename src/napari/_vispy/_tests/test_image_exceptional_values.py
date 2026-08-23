@@ -48,7 +48,7 @@ _BACKGROUND = 'magenta'  # nothing in the colormaps under test produces it
 
 
 def _plain_node(data, view, vispy_cmap, clim):
-    ImageNode(
+    return ImageNode(
         data,
         cmap=vispy_cmap,
         clim=clim,
@@ -65,22 +65,42 @@ def _tiled_node(data, view, vispy_cmap, clim):
     node.cmap = vispy_cmap
     node.clim = clim
     node.interpolation = 'nearest'
+    return node
+
+
+def _retiled_node(data, view, vispy_cmap, clim):
+    """Configure the node, then force a tile-count change.
+
+    Children are replaced wholesale when the tile count changes, so this is
+    the path where previously assigned state is lost if it is not carried
+    over. Configuring before the change is the whole point.
+    """
+    node = TiledImageNode(data, tile_size=len(VALUES), texture_format='auto')
+    node.parent = view.scene
+    node.cmap = vispy_cmap
+    node.clim = clim
+    node.interpolation = 'nearest'
+    node.tile_size = 4
+    node.set_data(data)  # different tile count: every child is rebuilt
+    return node
 
 
 def render_values(
-    colormap: Colormap, clim=(0.0, 1.0), node=_plain_node
+    colormap: Colormap, clim=(0.0, 1.0), node=_plain_node, gamma=None
 ) -> dict:
     """Render one texel per probe value and return its RGB, keyed by name."""
     data = np.tile(np.array(VALUES, dtype=np.float32), (8, 1))
     canvas = SceneCanvas(size=(64, 64), show=False, bgcolor=_BACKGROUND)
     try:
         view = canvas.central_widget.add_view()
-        node(
+        created = node(
             data,
             view,
             _napari_cmap_to_vispy(colormap, decode_sentinels=True),
             clim,
         )
+        if gamma is not None:
+            created.gamma = gamma
         view.camera = PanZoomCamera(aspect=1)
         view.camera.set_range(x=(0, len(VALUES)), y=(0, 8), margin=0)
         img = canvas.render(alpha=True)
@@ -193,6 +213,13 @@ def test_tiled_rendering_matches_untiled():
     assert tiled['nan'] == as_rgb(RED)
     assert tiled['pos_inf'] == as_rgb(GREEN)
 
+    # A data update that changes the tile count rebuilds every child. The
+    # colormap, clim and gamma assigned before that must survive it, or the
+    # tiles come back on vispy's defaults and the image changes appearance on
+    # a reshape.
+    retiled = render_values(cmap, node=_retiled_node)
+    assert retiled == untiled
+
 
 def test_nan_test_uses_two_uniform_bounds():
     """Guard the property the NaN test depends on.
@@ -207,19 +234,6 @@ def test_nan_test_uses_two_uniform_bounds():
     assert '!(data <= $flt_max) && !(data >= -$flt_max)' in _APPLY_CLIM_FLOAT
     # no literal float32 max anywhere in the classification
     assert '3.40282' not in _APPLY_CLIM_FLOAT
-
-
-def test_colormap_prologue_resolves_fallbacks_on_the_cpu():
-    """Fallback resolution belongs off the per-fragment path."""
-    glsl = _napari_cmap_to_vispy(
-        Colormap(BLACK_WHITE, name='testing', high_color=YELLOW),
-        decode_sentinels=True,
-    ).glsl_map
-    # +inf falls back to high_color, -inf to the first ramp color
-    assert 'vec4(1.000000, 1.000000, 0.000000, 1.000000)' in glsl
-    assert 'vec4(0.000000, 0.000000, 0.000000, 1.000000)' in glsl
-    # and the prologue precedes every check vispy injects
-    assert glsl.index('exceptional-value classes') < glsl.index('bad_color')
 
 
 def test_sentinel_decoding_is_off_by_default():
@@ -255,3 +269,66 @@ def test_surface_colormap_leaves_under_range_values_alone():
     layer.contrast_limits = (0.0, 1.0)
     visual = VispySurfaceLayer(layer, font_info=FontInfo())
     assert 'exceptional-value classes' not in visual.node.cmap.glsl_map
+
+
+@pytest.mark.usefixtures('qapp')
+@pytest.mark.parametrize('gamma', [0.5, 2.2])
+def test_class_colors_survive_gamma(gamma):
+    """pow() of a negative base is NaN, so sentinels must bypass apply_gamma.
+
+    Without the bypass every class would come back as whatever the driver
+    makes of pow(negative, gamma), and the failure would only appear for
+    users who moved the gamma slider.
+    """
+    cmap = Colormap(
+        BLACK_WHITE,
+        name='testing',
+        nan_color=RED,
+        pos_inf_color=GREEN,
+        neg_inf_color=BLUE,
+    )
+    plain = render_values(cmap)
+    adjusted = render_values(cmap, gamma=gamma)
+
+    for name in ('neg_inf', 'pos_inf', 'nan'):
+        assert adjusted[name] == plain[name], f'{name} moved with gamma'
+    # and gamma still applies to ordinary data, so this is not passing because
+    # the whole stage was skipped
+    assert adjusted['half'] != plain['half']
+
+
+@pytest.mark.usefixtures('qapp')
+@pytest.mark.parametrize(
+    'kwargs',
+    [
+        {},
+        {'high_color': YELLOW, 'low_color': CYAN},
+        {'pos_inf_color': GREEN, 'neg_inf_color': BLUE, 'nan_color': RED},
+    ],
+    ids=['bare', 'saturation-only', 'infinity-colors'],
+)
+def test_gpu_agrees_with_cpu_on_every_class(kwargs):
+    """The shader and Colormap.map must not disagree about a class.
+
+    They are what a user compares without knowing it: the canvas is rendered
+    on the GPU while the layer thumbnail and any CPU fallback go through
+    map(). This renders each class and checks it against the CPU answer for
+    the same value, so a divergence in the fallback order shows up here
+    rather than as a thumbnail that does not match the canvas.
+    """
+    cmap = Colormap(BLACK_WHITE, name='testing', **kwargs)
+    rendered = render_values(cmap)
+    expected = cmap.map(np.array([np.nan, np.inf, -np.inf]))
+
+    background = np.array([255, 0, 255], dtype=float)  # _BACKGROUND, magenta
+    for name, cpu in zip(('nan', 'pos_inf', 'neg_inf'), expected, strict=True):
+        # The canvas composites over its background, and nan_color is
+        # transparent by default, so the CPU answer has to be composited the
+        # same way before the two are comparable.
+        alpha = float(cpu[3])
+        composited = np.asarray(
+            cpu[:3], dtype=float
+        ) * 255 * alpha + background * (1 - alpha)
+        assert rendered[name] == pytest.approx(composited, abs=1), (
+            f'{name}: GPU {rendered[name]} disagrees with CPU {cpu}'
+        )

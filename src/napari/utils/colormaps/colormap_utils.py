@@ -276,29 +276,18 @@ POS_INF_SENTINEL = -2.0
 NEG_INF_SENTINEL = -3.0
 
 
-def _resolve_exceptional_colors(
-    colormap: Colormap,
-) -> tuple[tuple[float, ...], tuple[float, ...], tuple[float, ...]]:
-    """Resolve each exceptional class to a concrete RGBA, applying fallbacks.
+def _resolve_exceptional_colors(colormap: Colormap) -> np.ndarray:
+    """Resolve each exceptional class to a concrete RGBA, fallbacks applied.
 
-    Mirrors cmap's hierarchy: an infinity falls back to the corresponding
-    saturation color, then to the ramp end it would have reached anyway. Doing
-    this here rather than in the shader keeps the fallback logic in one place
-    and out of the per-fragment path.
+    Delegates to the CPU mapping instead of restating the fallback order.
+    `Colormap.map` already sends +inf through pos_inf_color, then high_color,
+    then the ramp end it would have reached anyway, and -inf through the
+    mirror of that; asking it here means the shader cannot disagree with the
+    thumbnails and the CPU path about what a class should look like.
+
+    Returns three RGBA rows: NaN, +inf, -inf.
     """
-    colors = np.atleast_2d(np.asarray(colormap.colors, dtype=np.float32))
-
-    def rgba(value, fallback) -> tuple[float, ...]:
-        if value is None:
-            return tuple(float(c) for c in fallback)
-        return tuple(float(c) for c in np.asarray(value).ravel()[:4])
-
-    nan = rgba(colormap.nan_color, (0.0, 0.0, 0.0, 0.0))
-    pos_inf = rgba(
-        colormap.pos_inf_color, rgba(colormap.high_color, colors[-1])
-    )
-    neg_inf = rgba(colormap.neg_inf_color, rgba(colormap.low_color, colors[0]))
-    return nan, pos_inf, neg_inf
+    return colormap.map(np.array([np.nan, np.inf, -np.inf]))
 
 
 class _ExceptionalVispyColormap(VispyColormap):
