@@ -77,11 +77,9 @@ class Colormap(EventedModel):
     nan_color : ColorValue
         Mapping for NaN values. Equivalent to matplotlib's `bad_color`
     high_color : ColorValue
-        Mapping for values strictly greater than 1, matching matplotlib's
-        `set_over`. A value of exactly 1 is in range and takes the ramp end.
+        Mapping for values equal to or greater than 1.
     low_color : ColorValue
-        Mapping for values strictly less than 0, matching matplotlib's
-        `set_under`. A value of exactly 0 is in range and takes the ramp start.
+        Mapping for values equal to or less than 0.
     pos_inf_color : ColorValue
         Mapping for +inf. When None, +inf follows `high_color` if set and the
         final ramp color otherwise.
@@ -176,12 +174,10 @@ class Colormap(EventedModel):
         values = values[..., None]
         # map NaNs, lows, and highs
         cols = np.where(np.isnan(values), self.nan_color, cols)
-        # Strictly outside, matching matplotlib and cmap: a value sitting
-        # exactly on a contrast limit is in range and keeps the ramp endpoint.
         if self.high_color is not None:
-            cols = np.where(values > 1, self.high_color, cols)
+            cols = np.where(values >= 1, self.high_color, cols)
         if self.low_color is not None:
-            cols = np.where(values < 0, self.low_color, cols)
+            cols = np.where(values <= 0, self.low_color, cols)
         # infinities are a tier above high/low: -inf <= 0 and +inf >= 1 are
         # both True, so these must come last to win over them.
         if self.pos_inf_color is not None:
