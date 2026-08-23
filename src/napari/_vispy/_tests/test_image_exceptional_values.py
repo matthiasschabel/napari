@@ -377,3 +377,26 @@ def test_retiling_preserves_every_pass_through_attribute():
             )
         else:
             assert after[name] == before[name], f'{name} not carried over'
+
+
+@pytest.mark.usefixtures('qapp')
+def test_contrast_limit_endpoints_are_in_range_on_the_gpu():
+    """A value on the limit takes the ramp end, not the out-of-range color.
+
+    This is what classifying before the clamp buys beyond the infinities. The
+    old shader clamped first, which left `>= 1` as the only way to notice an
+    out-of-range value, and that also caught every value sitting exactly on
+    the limit. matplotlib and cmap both treat the endpoints as in range.
+    """
+    rendered = render_values(
+        Colormap(
+            BLACK_WHITE, name='testing', high_color=YELLOW, low_color=CYAN
+        )
+    )
+    assert rendered['zero'] == (0, 0, 0), 'clim low endpoint took low_color'
+    assert rendered['one'] == (255, 255, 255), (
+        'clim high endpoint took high_color'
+    )
+    # while strictly outside still takes them
+    assert rendered['under'] == as_rgb(CYAN)
+    assert rendered['over'] == as_rgb(YELLOW)

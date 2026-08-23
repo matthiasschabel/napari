@@ -593,10 +593,17 @@ class Image(IntensityVisualizationMixin, ScalarFieldBase):
             downsampled = downsampled.astype(float, copy=True)
             finite = np.isfinite(downsampled)
             color_range = high - low
-            values = np.clip(downsampled[finite], low, high)
+            values = downsampled[finite]
             if color_range != 0:
                 values = (values - low) / color_range
-            downsampled[finite] = values**self.gamma
+            # No clamp: the colormap decides the out-of-range classes itself,
+            # and clipping first would hand it a value of exactly 0 or 1 that
+            # it cannot tell from data sitting on the limit. Gamma applies only
+            # in range, since a negative base is NaN and the ramp lookup clamps
+            # anyway.
+            in_range = (values >= 0) & (values <= 1)
+            values = np.where(in_range, np.abs(values) ** self.gamma, values)
+            downsampled[finite] = values
             color_array = self.colormap.map(downsampled.ravel())
             colormapped = color_array.reshape((*downsampled.shape, 4))
             colormapped[..., 3] *= self.opacity

@@ -274,6 +274,13 @@ SENTINEL_CUTOFF = -0.5
 NAN_SENTINEL = -1.0
 POS_INF_SENTINEL = -2.0
 NEG_INF_SENTINEL = -3.0
+UNDER_SENTINEL = -4.0
+OVER_SENTINEL = -5.0
+
+
+# Probe values, one per class. The last two are strictly outside [0, 1], so
+# they resolve through low_color/high_color and then to the ramp ends.
+_CLASS_PROBES = np.array([np.nan, np.inf, -np.inf, -0.5, 1.5])
 
 
 def _resolve_exceptional_colors(colormap: Colormap) -> np.ndarray:
@@ -281,13 +288,13 @@ def _resolve_exceptional_colors(colormap: Colormap) -> np.ndarray:
 
     Delegates to the CPU mapping instead of restating the fallback order.
     `Colormap.map` already sends +inf through pos_inf_color, then high_color,
-    then the ramp end it would have reached anyway, and -inf through the
-    mirror of that; asking it here means the shader cannot disagree with the
+    then the ramp end it would have reached anyway, and the others through
+    their own chains; asking it here means the shader cannot disagree with the
     thumbnails and the CPU path about what a class should look like.
 
-    Returns three RGBA rows: NaN, +inf, -inf.
+    Returns five RGBA rows: NaN, +inf, -inf, under, over.
     """
-    return colormap.map(np.array([np.nan, np.inf, -np.inf]))
+    return colormap.map(_CLASS_PROBES)
 
 
 class _ExceptionalVispyColormap(VispyColormap):
@@ -304,13 +311,15 @@ class _ExceptionalVispyColormap(VispyColormap):
         super().__init__(*args, **kwargs)
         if exceptional_colors is None:
             return
-        nan, pos_inf, neg_inf = exceptional_colors
+        nan, pos_inf, neg_inf, under, over = exceptional_colors
 
         def vec4(c) -> str:
             return 'vec4({:.6f}, {:.6f}, {:.6f}, {:.6f})'.format(*c)
 
         prologue = f"""
         // napari: exceptional-value classes, ahead of every other check
+        if (t < {OVER_SENTINEL + 0.5}) {{ return {vec4(over)}; }}
+        if (t < {UNDER_SENTINEL + 0.5}) {{ return {vec4(under)}; }}
         if (t < {NEG_INF_SENTINEL + 0.5}) {{ return {vec4(neg_inf)}; }}
         if (t < {POS_INF_SENTINEL + 0.5}) {{ return {vec4(pos_inf)}; }}
         if (t < {SENTINEL_CUTOFF}) {{ return {vec4(nan)}; }}"""
@@ -342,6 +351,12 @@ def _napari_cmap_to_vispy(
     cmap_args['bad_color'] = cmap_args.pop('nan_color')
     if not decode_sentinels:
         return VispyColormap(**cmap_args)
+    # vispy injects its own low and high checks, `t <= 1e-12` and
+    # `1 - t <= 1e-12`, which are inclusive and would fire for a value sitting
+    # exactly on a contrast limit. The sentinel prologue already carries those
+    # two classes with strict semantics, so vispy must not be given them.
+    cmap_args.pop('low_color', None)
+    cmap_args.pop('high_color', None)
     return _ExceptionalVispyColormap(
         **cmap_args, exceptional_colors=_resolve_exceptional_colors(colormap)
     )
