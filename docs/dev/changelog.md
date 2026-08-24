@@ -4,6 +4,38 @@ Maintainer-facing record of fixes carried in this fork. Design rationale for the
 exceptional-value work lives in `docs/dev/exceptional_rendering/README.md` and, more fully,
 in `cmap/docs/dev/mcslab/napari_exceptional_rendering_plan.md`.
 
+## [2026-08-23] — A navigation lock stops moving the active slider, and stays visible
+
+- **Problem**: two regressions this fork introduced on top of its own per-axis lock, both
+  absent from the upstream branch behind the lock PR. Locking an axis moved `last_used` off
+  it, so lock and unlock no longer round-tripped, `dims.last_used = <locked axis>` was
+  silently reverted by the validator, and the owner lock tier disagreed with the per-axis
+  tier because private attributes do not re-run the validator. Separately, the disabled
+  handle rule was written to cover the `last_used` attribute selector as well, so every
+  locked handle was the same grey and a navigation lock cost the user sight of which axis
+  the arrow keys would resume on — visible during ROI drawing, and the common case once
+  locking stopped moving focus.
+- **Resolution**: `_check_dims` goes back to upstream's visibility-only rule. The premise
+  behind the extra condition does not hold: an arrow key on a locked active axis emits
+  `axis_lock_rejected` and flashes the padlock, so the user is told, not stranded.
+  `_focus_up`/`_focus_down` still skip locked axes, which leaves a pointer press as the only
+  route back to one, so the row now claims the axis when a press lands on its frozen slider
+  (standing in for the `sliderPressed` a disabled scrollbar never emits). The two QSS rules
+  split apart, and a locked *active* handle greys out like the others but keeps a 1px
+  `current` rim.
+- **Considered and rejected**: marking the locked active handle with a muted `current` fill,
+  which is what the upstream branch does. `darken()` moves a colour towards the theme
+  background, so in the light theme `darken(current, 25)` is `rgb(177, 202, 255)` against an
+  enabled `rgb(160, 184, 255)`; the handle reads as live. The rim is full-strength in either
+  theme and leaves the fill free to mean "disabled".
+- **Upstream**: the focus regression never reached the lock PR's branch, so nothing to send.
+  The rim is an improvement over what that branch styles today and is staged there locally,
+  to go out with the response to its pending review rather than as separate churn.
+- **Files affected**: `src/napari/components/dims.py`,
+  `src/napari/_qt/widgets/qt_dims_slider.py`,
+  `src/napari/_qt/qt_resources/styles/02_custom.qss`,
+  `docs/dev/per_axis_navigation_lock_design.md`, and their tests
+
 ## [2026-08-22] — Exceptional values are classified before the contrast limits are applied
 
 - **Problem**: three defects with one cause. The float image pipeline clamped data into the

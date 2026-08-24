@@ -175,6 +175,12 @@ class QtDimSliderWidget(QWidget):
         a press that arrives here over one of those frozen controls is the user
         trying to navigate a locked axis; remind them, then pass it on. The
         padlock itself stays enabled, so unlock clicks never reach this handler.
+
+        A press on the frozen *slider* also claims the axis, standing in for the
+        ``sliderPressed`` a disabled scrollbar never emits. That is the only way
+        back to a locked axis: ``_focus_up``/``_focus_down`` skip it by design,
+        so without this the arrow keys could not be pointed at an axis the user
+        means to resume on once it is unlocked.
         """
         if not self.dims.is_axis_movable(self.axis):
             point = (
@@ -184,6 +190,11 @@ class QtDimSliderWidget(QWidget):
             )
             frozen = (self.slider, self.play_button, self.curslice_label)
             if any(w.geometry().contains(point) for w in frozen):
+                if (
+                    event.button() == Qt.MouseButton.LeftButton
+                    and self.slider.geometry().contains(point)
+                ):
+                    self.dims.last_used = self.axis
                 self._flash_lock()
         super().mousePressEvent(event)
 
