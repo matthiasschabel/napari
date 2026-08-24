@@ -225,14 +225,25 @@ QtDimSliderWidget > QScrollBar::handle[last_used=true]:horizontal {
    Must not be `foreground`: that is the groove's own background, so the handle
    would vanish into the track rather than read as greyed out. `primary` sits
    between the groove and the normal `secondary` handle in both light and dark
-   themes, giving a muted but visible thumb.
+   themes, giving a muted but visible thumb. */
+QtDimSliderWidget > QScrollBar::handle:disabled {
+    background: {{ primary }};
+}
 
-   The last_used rule above is an attribute selector and so outranks a bare
-   `:disabled`; repeating it here keeps a locked *active* slider greying out
-   instead of staying marked as current. */
-QtDimSliderWidget > QScrollBar::handle:disabled,
+/* The active axis is the one the arrow keys resume on once the lock lifts, so
+   it keeps a `current` rim while greying out like every other locked handle.
+   A rim rather than a muted `current` fill: the fill has to stay clear of the
+   enabled `current`, and in the light theme there is no room — muting `current`
+   there moves it *towards* the background, landing a few units from the enabled
+   colour, so a locked handle reads as live. The rim is full-strength `current`
+   against a grey thumb in both themes, and leaves the fill free to say
+   "disabled".
+
+   This rule must follow the enabled `[last_used=true]:horizontal` rule above,
+   which would otherwise keep the full `current` fill. */
 QtDimSliderWidget > QScrollBar::handle[last_used=true]:disabled {
     background: {{ primary }};
+    border: 1px solid {{ current }};
 }
 
 QtDimSliderWidget > QScrollBar:left-arrow:horizontal {

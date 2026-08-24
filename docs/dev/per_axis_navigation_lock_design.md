@@ -105,23 +105,45 @@ which disables *each control that moves the slice* (`slider`, `play_button`,
 an axis whose navigation is frozen. `axis_label` stays enabled: it renames the
 axis, it does not navigate.
 
-### The active slider must be one you can move
+### Locking an axis does not move the active slider
 
 `last_used` marks the active slider (its handle is drawn in the theme's
-`current` colour). `_check_dims` already moved it when it stopped being
-*visible*; it now also moves it when it stops being *movable*, so locking the
-active axis hands focus to a movable one and locking an inactive axis does not
-steal focus. When every slider is locked it falls back to the visible sliders,
-so `last_used` always names a real slider — and unlocking one then makes it
-active, because it becomes the only candidate. `_focus_up`/`_focus_down` skip
-non-movable axes on the same reasoning.
+`current` colour). `_check_dims` moves it only when it stops being *visible*.
+A lock says what navigation may move, not which slider the user is on, so
+locking the active axis leaves it active.
+
+An earlier version of this fork also moved `last_used` when an axis stopped
+being *movable*, reasoning that the arrow keys would otherwise do nothing on
+the active slider. Three things were wrong with it. Lock and unlock stopped
+round-tripping, because unlocking did not hand focus back. `dims.last_used =
+<locked axis>` was silently reverted by the validator, so no caller could
+restore it either. And the owner lock disagreed: it sets private attributes,
+which do not re-run the validator, so the same user-visible situation moved
+focus under one lock tier and not the other. The premise was wrong too — an
+arrow key on a locked active axis is not silent, it flashes the padlock
+(`axis_lock_rejected`, below). Removed; the rule is upstream's again.
+
+`_focus_up`/`_focus_down` still skip non-movable axes: those are explicit
+gestures whose point is to land on something drivable. That makes a pointer
+press the only route back to a locked axis, which is why
+`QtDimSliderWidget.mousePressEvent` claims the axis when the press lands on the
+frozen slider — standing in for the `sliderPressed` a disabled scrollbar never
+emits.
 
 The disabled-handle colour must not be `foreground`: that is the groove's own
 background, so the thumb would vanish into the track instead of reading as
 greyed out. It is `primary`, which sits between the groove and the normal
-`secondary` handle in both themes. The `last_used` rule is an attribute
-selector and outranks a bare `:disabled`, so the disabled rule repeats it to
-keep a locked *active* slider greying out rather than staying marked current.
+`secondary` handle in both themes.
+
+A locked *active* handle greys out with the rest but keeps a 1px `current` rim,
+so a navigation lock does not cost the user sight of which axis the arrow keys
+will resume on. A rim rather than a muted `current` fill, which is what an
+earlier version used: the fill has to stay clear of the enabled `current`, and
+`darken()` moves a colour towards the theme background, so in the light theme
+`darken(current, 25)` is `rgb(177, 202, 255)` against an enabled `rgb(160, 184,
+255)` — near enough that a locked handle reads as live. The rim is
+full-strength `current` against a grey thumb in either theme, and it leaves the
+fill free to mean "disabled".
 
 ### Locking an axis must stop its playback
 
