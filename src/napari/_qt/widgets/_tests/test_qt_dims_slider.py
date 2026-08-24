@@ -161,6 +161,48 @@ def test_press_on_locked_slider_flashes(qtbot):
 
 
 @pytest.mark.disable_qtimer_start
+def test_press_on_locked_slider_claims_the_axis(qtbot):
+    """A left press on a frozen slider makes that axis active."""
+    from qtpy.QtCore import QEvent, QPointF, Qt
+    from qtpy.QtGui import QMouseEvent
+    from qtpy.QtWidgets import QApplication
+
+    dims = Dims(ndim=4)  # not_displayed == (0, 1)
+    view = QtDims(dims)
+    qtbot.addWidget(view)
+    view.resize(600, 200)
+    view.show()
+    QApplication.processEvents()  # realize the layout so geometries are valid
+
+    widget: QtDimSliderWidget = view.slider_widgets[1]
+
+    def press(child, button=Qt.MouseButton.LeftButton) -> None:
+        center = child.geometry().center()
+        widget.mousePressEvent(
+            QMouseEvent(
+                QEvent.Type.MouseButtonPress,
+                QPointF(center),
+                button,
+                button,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+
+    dims.last_used = 0
+    dims.lock_axis(1)
+    assert dims.last_used == 0  # locking did not move the active axis
+
+    press(widget.play_button)
+    assert dims.last_used == 0  # the play button does not claim
+
+    press(widget.slider, Qt.MouseButton.RightButton)
+    assert dims.last_used == 0  # right-click is reserved for playback settings
+
+    press(widget.slider)
+    assert dims.last_used == 1
+
+
+@pytest.mark.disable_qtimer_start
 def test_lock_flash_reset_clears_tint(qtbot):
     """The flash is transient: the timeout handler clears the amber tint."""
     dims = Dims(ndim=3)

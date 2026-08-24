@@ -793,21 +793,27 @@ def test_locking_inactive_axis_leaves_active_axis_alone():
     assert dims.last_used == 0
 
 
-def test_locking_active_axis_moves_active_to_a_movable_one():
-    # The active slider should always be one you can actually move.
+def test_locking_active_axis_leaves_it_active():
     dims = _nav_dims()
     dims.last_used = 0
     dims.lock_axis(0)
-    assert dims.last_used == 1
+    assert dims.last_used == 0
 
 
-def test_unlocking_makes_axis_active_when_none_are_movable():
-    # With every slider locked, last_used still names a real slider; unlocking
-    # one makes it the only candidate, so it becomes active.
+def test_lock_unlock_round_trip_preserves_the_active_axis():
     dims = _nav_dims()
-    dims.lock_all_axes()
-    assert dims.last_used in (0, 1)  # still a real slider, not None
-    dims.unlock_axis(1)
+    dims.last_used = 0
+    dims.lock_axis(0)
+    dims.unlock_axis(0)
+    assert dims.last_used == 0
+
+
+def test_a_locked_axis_can_be_made_active():
+    # The arrow keys need somewhere to resume once the axis is unlocked, so
+    # naming a locked axis as the active one has to be expressible.
+    dims = _nav_dims()
+    dims.lock_axis(1)
+    dims.last_used = 1
     assert dims.last_used == 1
 
 
