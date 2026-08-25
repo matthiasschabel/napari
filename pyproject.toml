@@ -1,7 +1,7 @@
 [build-system]
 requires = [
   "setuptools >= 77.0.1",
-  "setuptools_scm[toml]>=8"
+  "setuptools_scm[toml]>=9.2"
 ]
 build-backend = "setuptools.build_meta"
 
@@ -359,6 +359,10 @@ napari_builtins = [
 [tool.setuptools_scm]
 write_to = "src/napari/_version.py"
 fallback_version = "0.7.1.dev0"
+
+[tool.setuptools_scm.tag]
+prefix = "v"
+strict = true
 
 [tool.check-manifest]
 ignore = [
