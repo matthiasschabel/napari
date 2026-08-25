@@ -152,6 +152,44 @@ def test_play_raises_value_errors(qtbot, ref_view):
         view.dims.play(0, 20, loop_mode=5)
 
 
+def test_playback_updates_when_layer_range_changes(ref_view, qtbot):
+    view = ref_view()
+    layer = view.viewer.layers[0]
+    layer.data = np.zeros((500, 10, 10, 15))
+    view.viewer.dims.set_current_step(0, 480)
+
+    with qtbot.waitSignal(view.dims._animation_thread.started):
+        view.dims.play(0, 20)
+
+    layer.data = np.zeros((3, 10, 10, 15))
+
+    assert view.dims._animation_thread.max_point == 3
+    assert 0 <= view.dims._animation_thread.current < 3
+    assert view.dims.is_playing
+
+    layer.data = np.zeros((6, 10, 10, 15))
+
+    assert view.dims._animation_thread.max_point == 6
+    assert view.dims.is_playing
+
+    layer.data = np.zeros((1, 10, 10, 15))
+
+    assert not view.dims.is_playing
+
+
+def test_playback_stops_when_frame_range_becomes_invalid(ref_view, qtbot):
+    view = ref_view()
+    layer = view.viewer.layers[0]
+    layer.data = np.zeros((10, 10, 10, 15))
+
+    with qtbot.waitSignal(view.dims._animation_thread.started):
+        view.dims.play(0, 20, frame_range=(2, 6))
+
+    layer.data = np.zeros((3, 10, 10, 15))
+
+    assert not view.dims.is_playing
+
+
 def test_playing_hidden_slider_does_nothing(ref_view):
     """Make sure playing a dimension without a slider does nothing"""
 

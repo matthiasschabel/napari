@@ -136,6 +136,22 @@ class QtDims(QWidget):
         for widget in self.slider_widgets:
             widget._update_range()
 
+        if self._animation_thread.isRunning():
+            axis = self._animation_thread.axis
+            if (
+                axis is None
+                or axis >= len(self._displayed_sliders)
+                or not self._displayed_sliders[axis]
+            ):
+                self.stop()
+            else:
+                try:
+                    self._animation_thread.set_frame_range(
+                        self._animation_thread.frame_range
+                    )
+                except IndexError:
+                    self.stop()
+
         nsliders = np.sum(self._displayed_sliders)
         self.setMinimumHeight(nsliders * self.SLIDERHEIGHT)
         self._resize_slice_labels()
@@ -413,7 +429,11 @@ class QtDims(QWidget):
         if self.dims._play_ready:
             # disable additional point advance requests until this one draws
             self.dims._play_ready = False
+            before = self.dims.point
             self.dims.set_current_step(axis, frame)
+            if self.dims.point == before:
+                # nothing moved, so no draw is coming to re-enable playback
+                self.dims._play_ready = True
 
     def closeEvent(self, event):
         [w.deleteLater() for w in self.slider_widgets]
