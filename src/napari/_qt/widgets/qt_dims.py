@@ -142,15 +142,9 @@ class QtDims(QWidget):
                 axis is None
                 or axis >= len(self._displayed_sliders)
                 or not self._displayed_sliders[axis]
+                or not self._animation_thread.refresh_dims_range()
             ):
                 self.stop()
-            else:
-                try:
-                    self._animation_thread.set_frame_range(
-                        self._animation_thread.frame_range
-                    )
-                except IndexError:
-                    self.stop()
 
         nsliders = np.sum(self._displayed_sliders)
         self.setMinimumHeight(nsliders * self.SLIDERHEIGHT)
