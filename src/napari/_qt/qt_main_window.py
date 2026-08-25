@@ -1152,7 +1152,7 @@ class Window:
         area: str | None = None,
         allowed_areas: Sequence[str] | None = None,
         shortcut=_sentinel,
-        add_vertical_stretch=True,
+        add_vertical_stretch=False,
         tabify: bool = False,
         menu: QMenu | None = None,
     ):
