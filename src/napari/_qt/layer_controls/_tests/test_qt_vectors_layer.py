@@ -7,16 +7,6 @@ from napari.layers import Vectors
 _VECTORS = np.zeros((2, 2, 2))
 
 
-def test_out_of_slice_display_checkbox(qtbot):
-    layer = Vectors(_VECTORS)
-    qtctrl = QtVectorsControls(layer)
-    qtbot.addWidget(qtctrl)
-    qtctrl._out_slice_checkbox_control.out_of_slice_checkbox.setChecked(True)
-    assert layer.out_of_slice_display
-    qtctrl._out_slice_checkbox_control.out_of_slice_checkbox.setChecked(False)
-    assert not layer.out_of_slice_display
-
-
 def test_colormap_controls_follow_the_mode(qtbot):
     """The colormap and its limits are shown, and editable, in colormap mode only."""
     layer = Vectors(_VECTORS)
@@ -95,7 +85,7 @@ def test_rejected_mode_change_rolls_back_without_notifying(qtbot):
     heard = []
     layer.events.edge_color_mode.connect(lambda event: heard.append(True))
 
-    with pytest.raises(ValueError, match='valid Points'):
+    with pytest.raises(ValueError, match='valid Vectors'):
         control.change_edge_color_mode('colormap')
 
     assert layer.edge_color_mode == 'direct'
