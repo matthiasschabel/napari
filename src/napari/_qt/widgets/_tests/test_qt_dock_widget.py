@@ -1,3 +1,6 @@
+import subprocess
+import sys
+
 import pytest
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
@@ -10,6 +13,23 @@ from qtpy.QtWidgets import (
 )
 
 from napari._qt.utils import combine_widgets
+
+
+def test_omitted_shortcut_survives_module_reload():
+    script = (
+        'from importlib import reload\n'
+        'from napari._qt import qt_main_window\n'
+        'from napari._qt.widgets import qt_viewer_dock_widget\n'
+        'window_default = '
+        "qt_main_window.Window.add_dock_widget.__kwdefaults__['shortcut']\n"
+        'dock_default = '
+        "qt_viewer_dock_widget.QtViewerDockWidget.__init__.__kwdefaults__['shortcut']\n"
+        'reload(qt_main_window)\n'
+        'reload(qt_viewer_dock_widget)\n'
+        'assert window_default is qt_main_window._sentinel\n'
+        'assert dock_default is qt_viewer_dock_widget._sentinel\n'
+    )
+    subprocess.run([sys.executable, '-c', script], check=True)
 
 
 def test_add_dock_widget(make_napari_viewer):

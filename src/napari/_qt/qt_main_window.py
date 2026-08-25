@@ -102,7 +102,8 @@ if TYPE_CHECKING:
 
     from napari.viewer import Viewer
 
-_sentinel = object()
+# Keep defaults held by existing classes valid when interactive shells reload this module.
+_sentinel = globals().get('_sentinel', object())
 
 SHOW_QT_WARNING = QT5
 # a variable to check if we run with PyQt5 backend. As we dropped PySide it is enough to check Qt version

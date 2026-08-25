@@ -27,7 +27,8 @@ if TYPE_CHECKING:
     from napari._qt.qt_viewer import QtViewer
 
 counter = count()
-_sentinel = object()
+# Keep defaults held by existing classes valid when interactive shells reload this module.
+_sentinel = globals().get('_sentinel', object())
 
 _SHORTCUT_DEPRECATION_STRING = f'The shortcut parameter is deprecated since version 0.4.8, please use the action and shortcut manager APIs. The new action manager and shortcut API allow user configuration and localisation. (got {"{shortcut}"})'
 

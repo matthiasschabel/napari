@@ -167,12 +167,12 @@ class Shapes(Layer):
         Name of the layer.
     opacity : float
         Opacity of the layer visual, between 0.0 and 1.0.
-    projection_mode : str
-        How data outside the viewed dimensions but inside the thick Dims slice will
-        be projected onto the viewed dimenions.
     preserve_lasso_vertices : bool
         Whether polygon lasso completion keeps every sampled vertex instead of applying
         Ramer-Douglas-Peucker simplification.
+    projection_mode : str
+        How data outside the viewed dimensions but inside the thick Dims slice will
+        be projected onto the viewed dimenions.
     properties : dict {str: array (N,)}, DataFrame
         Properties for each shape. Each property should be an array of length N,
         where N is the number of shapes.
