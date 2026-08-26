@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 from pydantic import ValidationError
-from qtpy.QtCore import Qt
+from qtpy.QtCore import QPoint, Qt
 
 from napari._vispy.utils.cursor import QtCursorVisual
 from napari._vispy.utils.visual import get_view_direction_in_scene_coordinates
@@ -72,3 +72,25 @@ def test_set_cursor(make_napari_viewer):
 
     with pytest.raises(ValidationError):
         viewer.cursor.style = 'invalid'
+
+
+def test_shapes_vertex_mode_cursors(make_napari_viewer):
+    viewer = make_napari_viewer()
+    layer = viewer.add_shapes()
+    canvas = viewer.window._qt_viewer.canvas
+
+    layer.mode = 'vertex_insert'
+    insert_cursor = canvas.cursor
+    assert insert_cursor.shape() == Qt.CursorShape.BitmapCursor
+    assert insert_cursor.hotSpot() == QPoint(2, 2)
+    assert not insert_cursor.pixmap().isNull()
+
+    layer.mode = 'vertex_remove'
+    remove_cursor = canvas.cursor
+    assert remove_cursor.shape() == Qt.CursorShape.BitmapCursor
+    assert remove_cursor.hotSpot() == QPoint(2, 2)
+    assert not remove_cursor.pixmap().isNull()
+    assert insert_cursor.pixmap().toImage() != remove_cursor.pixmap().toImage()
+
+    layer.mode = 'pan_zoom'
+    assert canvas.cursor.shape() == Qt.CursorShape.ArrowCursor
