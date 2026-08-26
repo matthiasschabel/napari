@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 LOADING_GIF_PATH = str((Path(__file__).parent / 'loading.gif').resolve())
 ICON_PATH = (Path(__file__).parent / 'icons').resolve()
+CURSOR_PATH = (Path(__file__).parent / 'cursors').resolve()
 ICONS = {x.stem: str(x) for x in ICON_PATH.iterdir() if x.suffix == '.svg'}
 PLUGIN_FILE_NAME = 'plugin.txt'
 

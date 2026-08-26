@@ -419,6 +419,12 @@ class VispyCanvas:
                 self.cursor = QtCursorVisual.square(size)
         elif cursor == 'crosshair':
             self.cursor = QtCursorVisual.crosshair()
+        elif cursor == 'add':
+            self.cursor = QtCursorVisual.add(self.native.devicePixelRatioF())
+        elif cursor == 'remove':
+            self.cursor = QtCursorVisual.remove(
+                self.native.devicePixelRatioF()
+            )
         else:
             self.cursor = QtCursorVisual[cursor].value
 

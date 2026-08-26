@@ -30,6 +30,8 @@ class Cursor(EventedModel):
             * pointing: A finger for pointing
             * standard: The standard cursor
             # crosshair: A crosshair
+            * add: A pointer indicating an additive operation
+            * remove: A pointer indicating a subtractive operation
     _view_direction : Optional[np.ndarray]
         The vector describing the direction of the camera in the scene
         in world coordinates.

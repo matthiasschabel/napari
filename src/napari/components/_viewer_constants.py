@@ -41,6 +41,8 @@ class CursorStyle(StrEnum):
             * pointing: A finger for pointing
             * standard: The standard cursor
             # crosshair: A crosshair
+            * add: A pointer indicating an additive operation
+            * remove: A pointer indicating a subtractive operation
     """
 
     SQUARE = 'square'
@@ -51,3 +53,5 @@ class CursorStyle(StrEnum):
     POINTING = 'pointing'
     STANDARD = 'standard'
     CROSSHAIR = 'crosshair'
+    ADD = 'add'
+    REMOVE = 'remove'
