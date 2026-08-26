@@ -4,6 +4,20 @@ Maintainer-facing record of fixes carried in this fork. Design rationale for the
 exceptional-value work lives in `docs/dev/exceptional_rendering/README.md` and, more fully,
 in `cmap/docs/dev/mcslab/napari_exceptional_rendering_plan.md`.
 
+## [2026-08-26] — Shapes vertex editing uses distinct add and remove cursors
+
+- **Problem**: Shapes vertex insertion and removal both used the generic cross cursor, so
+  the pointer did not indicate which editing operation was active.
+- **Resolution**: added semantic `add` and `remove` cursor styles backed by high-contrast
+  SVG pixmaps, rendered through QtSvg with Qt 5/6-compatible device-pixel-ratio handling,
+  and selected them for the corresponding Shapes modes.
+- **Files affected**: `src/napari/components/_viewer_constants.py`,
+  `src/napari/components/cursor.py`, `src/napari/layers/shapes/shapes.py`,
+  `src/napari/_vispy/canvas.py`, `src/napari/_vispy/utils/cursor.py`,
+  `src/napari/_vispy/_tests/test_utils.py`, `src/napari/resources/_icons.py`, and
+  `src/napari/resources/cursors/`
+- **Reviewed by**: Codex GPT-5 (model ID unavailable)
+
 ## [2026-08-23] — A navigation lock stops moving the active slider, and stays visible
 
 - **Problem**: two regressions this fork introduced on top of its own per-axis lock, both
