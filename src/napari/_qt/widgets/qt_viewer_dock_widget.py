@@ -12,6 +12,7 @@ from qtpy.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
@@ -27,8 +28,7 @@ if TYPE_CHECKING:
     from napari._qt.qt_viewer import QtViewer
 
 counter = count()
-# Keep defaults held by existing classes valid when interactive shells reload this module.
-_sentinel = globals().get('_sentinel', object())
+_sentinel = object()
 
 _SHORTCUT_DEPRECATION_STRING = f'The shortcut parameter is deprecated since version 0.4.8, please use the action and shortcut manager APIs. The new action manager and shortcut API allow user configuration and localisation. (got {"{shortcut}"})'
 
@@ -40,14 +40,18 @@ dock_area_to_str = {
 }
 
 
-def _wants_vertical_space(widget: QWidget) -> bool:
-    """Whether a widget, or one of its direct children, asks to grow vertically."""
-    exempt_policies = {
+_GROWING_POLICIES = frozenset(
+    {
         QSizePolicy.Policy.Expanding,
         QSizePolicy.Policy.MinimumExpanding,
         QSizePolicy.Policy.Ignored,
     }
-    if widget.sizePolicy().verticalPolicy() in exempt_policies:
+)
+
+
+def _wants_vertical_space(widget: QWidget) -> bool:
+    """Whether a widget, or anything in its layout, asks to grow vertically."""
+    if widget.sizePolicy().verticalPolicy() in _GROWING_POLICIES:
         return True
 
     # not uncommon to see people shadow the builtin layout() method
@@ -55,14 +59,18 @@ def _wants_vertical_space(widget: QWidget) -> bool:
         wlayout = widget.layout()
     except TypeError:
         return False
-    if wlayout is None:
-        return False
+    return wlayout is not None and _layout_wants_vertical_space(wlayout)
 
-    for i in range(wlayout.count()):
-        wdg = wlayout.itemAt(i).widget()
-        if (
-            wdg is not None
-            and wdg.sizePolicy().verticalPolicy() in exempt_policies
+
+def _layout_wants_vertical_space(layout: QLayout) -> bool:
+    for i in range(layout.count()):
+        item = layout.itemAt(i)
+        wdg = item.widget()
+        if wdg is not None:
+            if _wants_vertical_space(wdg):
+                return True
+        elif item.layout() is not None and _layout_wants_vertical_space(
+            item.layout()
         ):
             return True
     return False

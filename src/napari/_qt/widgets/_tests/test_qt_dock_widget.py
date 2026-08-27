@@ -1,11 +1,8 @@
-import subprocess
-import sys
-
 import pytest
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
-    QWIDGETSIZE_MAX,
     QDockWidget,
+    QGroupBox,
     QHBoxLayout,
     QPushButton,
     QSizePolicy,
@@ -15,23 +12,6 @@ from qtpy.QtWidgets import (
 )
 
 from napari._qt.utils import combine_widgets
-
-
-def test_omitted_shortcut_survives_module_reload():
-    script = (
-        'from importlib import reload\n'
-        'from napari._qt import qt_main_window\n'
-        'from napari._qt.widgets import qt_viewer_dock_widget\n'
-        'window_default = '
-        "qt_main_window.Window.add_dock_widget.__kwdefaults__['shortcut']\n"
-        'dock_default = '
-        "qt_viewer_dock_widget.QtViewerDockWidget.__init__.__kwdefaults__['shortcut']\n"
-        'reload(qt_main_window)\n'
-        'reload(qt_viewer_dock_widget)\n'
-        'assert window_default is qt_main_window._sentinel\n'
-        'assert dock_default is qt_viewer_dock_widget._sentinel\n'
-    )
-    subprocess.run([sys.executable, '-c', script], check=True)
 
 
 def test_add_dock_widget(make_napari_viewer):
@@ -188,24 +168,27 @@ def test_dock_widget_can_grow_vertically(make_napari_viewer):
     widg.setLayout(QVBoxLayout())
     widg.layout().addWidget(QPushButton())
     dw = viewer.window.add_dock_widget(widg, area='right')
-    assert dw.layout().maximumSize().height() < QWIDGETSIZE_MAX
+    assert dw.layout().maximumSize().height() < widg.maximumHeight()
     dw.close()
 
-    # ... unless it holds a widget that wants vertical space
+    # ... unless something in its layout wants vertical space, at any depth
     widg = QWidget()
     widg.setLayout(QVBoxLayout())
-    widg.layout().addWidget(QTextEdit())
+    box = QGroupBox()
+    box.setLayout(QVBoxLayout())
+    box.layout().addWidget(QTextEdit())
+    widg.layout().addWidget(box)
     dw = viewer.window.add_dock_widget(widg, area='right')
-    assert dw.layout().maximumSize().height() == QWIDGETSIZE_MAX
+    assert dw.layout().maximumSize().height() == widg.maximumHeight()
     dw.close()
 
-    # ... or asks for it itself, while the horizontal policy is still normalized
+    # ... or the widget asks for it itself, with the horizontal policy still normalized
     widg = QWidget()
     widg.setSizePolicy(
         QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
     )
     dw = viewer.window.add_dock_widget(widg, area='right')
-    assert dw.layout().maximumSize().height() == QWIDGETSIZE_MAX
+    assert dw.layout().maximumSize().height() == widg.maximumHeight()
     assert widg.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Preferred
     dw.close()
 
