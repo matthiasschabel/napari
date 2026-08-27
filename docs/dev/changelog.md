@@ -4,6 +4,23 @@ Maintainer-facing record of fixes carried in this fork. Design rationale for the
 exceptional-value work lives in `docs/dev/exceptional_rendering/README.md` and, more fully,
 in `cmap/docs/dev/mcslab/napari_exceptional_rendering_plan.md`.
 
+## [2026-08-26] — Keep operation cursors semantic and make contour teardown deterministic
+
+- **Problem**: the first operation-cursor revision assigned pointer-shaped add/remove cursors to
+  Shapes vertex tools, obscuring the precise target those tools edit. Polygon lasso could also
+  resume on mouse release after a keyboard finish, polygon clicks near the first vertex did not
+  close the contour, and committed lasso rings could retain a duplicate closing coordinate.
+- **Resolution**: retain versioned `add` and `remove` cursor styles as fork primitives for
+  downstream armed-tool feedback, but restore the crosshair for Shapes vertex insertion and
+  removal. Stop a suspended lasso generator after external teardown, close polygons when a third
+  click lands within the displayed first-vertex radius, and canonicalize completed lasso rings to
+  open coordinates after simplification without changing vertex-preservation behavior.
+- **Files affected**: `src/napari/components/cursor.py`,
+  `src/napari/layers/shapes/{shapes,_shapes_mouse_bindings}.py`,
+  `src/napari/resources/cursors/`, and their component, vispy, and Shapes tests.
+- **Reviewed by**: Claude Code through collaborative refinement (model identifier not reported
+  by the CLI); Codex (`gpt-5.6-sol`, QA review).
+
 ## [2026-08-26] — Shapes vertex editing uses distinct add and remove cursors
 
 - **Problem**: Shapes vertex insertion and removal both used the generic cross cursor, so

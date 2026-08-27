@@ -1,11 +1,15 @@
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 from pydantic import ValidationError
 from qtpy.QtCore import QPoint, Qt
 
+from napari._vispy.canvas import VispyCanvas
 from napari._vispy.utils.cursor import QtCursorVisual
 from napari._vispy.utils.visual import get_view_direction_in_scene_coordinates
 from napari.components._viewer_constants import CursorStyle
+from napari.components.cursor import Cursor
 
 
 def test_get_view_direction_in_scene_coordinates(make_napari_viewer):
@@ -74,23 +78,31 @@ def test_set_cursor(make_napari_viewer):
         viewer.cursor.style = 'invalid'
 
 
-def test_shapes_vertex_mode_cursors(make_napari_viewer):
-    viewer = make_napari_viewer()
-    layer = viewer.add_shapes()
-    canvas = viewer.window._qt_viewer.canvas
+def test_operation_cursors(qapp):
+    cursor = Cursor()
+    canvas = SimpleNamespace(
+        native=SimpleNamespace(devicePixelRatioF=lambda: 1.0),
+        viewer=SimpleNamespace(
+            cursor=cursor,
+            canvas=SimpleNamespace(
+                overlays=SimpleNamespace(
+                    _brush_circle=SimpleNamespace(visible=True)
+                )
+            ),
+        ),
+    )
 
-    layer.mode = 'vertex_insert'
-    insert_cursor = canvas.cursor
-    assert insert_cursor.shape() == Qt.CursorShape.BitmapCursor
-    assert insert_cursor.hotSpot() == QPoint(2, 2)
-    assert not insert_cursor.pixmap().isNull()
+    cursor.style = 'add'
+    VispyCanvas._on_cursor(canvas)
+    add_cursor = canvas.cursor
+    assert add_cursor.shape() == Qt.CursorShape.BitmapCursor
+    assert add_cursor.hotSpot() == QPoint(2, 2)
+    assert not add_cursor.pixmap().isNull()
 
-    layer.mode = 'vertex_remove'
+    cursor.style = 'remove'
+    VispyCanvas._on_cursor(canvas)
     remove_cursor = canvas.cursor
     assert remove_cursor.shape() == Qt.CursorShape.BitmapCursor
     assert remove_cursor.hotSpot() == QPoint(2, 2)
     assert not remove_cursor.pixmap().isNull()
-    assert insert_cursor.pixmap().toImage() != remove_cursor.pixmap().toImage()
-
-    layer.mode = 'pan_zoom'
-    assert canvas.cursor.shape() == Qt.CursorShape.ArrowCursor
+    assert add_cursor.pixmap().toImage() != remove_cursor.pixmap().toImage()

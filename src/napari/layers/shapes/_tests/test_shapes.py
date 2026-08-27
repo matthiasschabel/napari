@@ -1812,6 +1812,15 @@ def test_changing_modes():
     assert layer.mouse_pan is True
 
 
+def test_vertex_modes_use_cross_cursor():
+    layer = Shapes()
+
+    layer.mode = 'vertex_insert'
+    assert layer.cursor == 'cross'
+    layer.mode = 'vertex_remove'
+    assert layer.cursor == 'cross'
+
+
 def test_name():
     """Test setting layer name."""
     np.random.seed(0)

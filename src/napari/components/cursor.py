@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 import numpy as np
 
 from napari.components._viewer_constants import CursorStyle
@@ -6,6 +8,9 @@ from napari.utils.events import EventedModel
 
 class Cursor(EventedModel):
     """Cursor object with position and properties of the cursor.
+
+    ``OPERATION_CURSOR_VERSION`` is a class-level capability marker. Version 1
+    accepts and renders the ``add`` and ``remove`` styles.
 
     Attributes
     ----------
@@ -37,6 +42,8 @@ class Cursor(EventedModel):
         in world coordinates.
         This is None when viewing in 2D.
     """
+
+    OPERATION_CURSOR_VERSION: ClassVar[int] = 1
 
     # fields
     position: tuple[float, ...] = (1.0, 1.0)

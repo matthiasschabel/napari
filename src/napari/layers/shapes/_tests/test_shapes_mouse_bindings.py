@@ -873,6 +873,122 @@ def test_polygon_lasso_tablet(create_known_shapes_layer):
 
 
 @pytest.mark.parametrize(
+    ('moves', 'expected_added'),
+    [
+        ([], 0),
+        ([[20, 50], [60, 50], [60, 20]], 1),
+    ],
+)
+def test_lasso_release_after_keyboard_finish(
+    create_known_shapes_layer, moves, expected_added
+):
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+    start = [20, 20]
+
+    get_settings().experimental.rdp_epsilon = 0
+    layer.mode = 'add_polygon_lasso'
+    added = _record_added(layer)
+    mouse_press_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_press',
+            is_dragging=True,
+            position=start,
+            pos=start,
+        ),
+    )
+    for coord in moves:
+        mouse_move_callbacks(
+            layer,
+            read_only_mouse_event(
+                type='mouse_move',
+                is_dragging=True,
+                position=coord,
+                pos=coord,
+            ),
+        )
+
+    key_bindings.finish_drawing_shape(layer)
+    expected_events = [(n_shapes,)] if expected_added else [()]
+    assert added == expected_events
+
+    end = moves[-1] if moves else start
+    mouse_move_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_move',
+            is_dragging=True,
+            position=end,
+            pos=end,
+        ),
+    )
+
+    mouse_release_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_release',
+            is_dragging=True,
+            position=end,
+            pos=end,
+        ),
+    )
+    assert layer.nshapes == n_shapes + expected_added
+    assert not layer.is_creating
+    assert added == expected_events
+
+
+@pytest.mark.parametrize('preserve_lasso_vertices', [False, True])
+def test_lasso_return_to_first_vertex_is_stored_open(
+    create_known_shapes_layer, preserve_lasso_vertices
+):
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+    vertices = np.array(
+        [
+            [20.0, 20.0],
+            [20.0, 50.0],
+            [60.0, 50.0],
+            [np.nextafter(20.0, 21.0), 20.0],
+        ]
+    )
+
+    get_settings().experimental.rdp_epsilon = 1
+    layer.preserve_lasso_vertices = preserve_lasso_vertices
+    layer.mode = 'add_polygon_lasso'
+    mouse_press_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_press',
+            is_dragging=True,
+            position=vertices[0],
+            pos=vertices[0],
+        ),
+    )
+    for coord in vertices[1:]:
+        mouse_move_callbacks(
+            layer,
+            read_only_mouse_event(
+                type='mouse_move',
+                is_dragging=True,
+                position=coord,
+                pos=coord,
+            ),
+        )
+    mouse_release_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_release',
+            is_dragging=True,
+            position=vertices[-1],
+            pos=vertices[-1],
+        ),
+    )
+
+    assert layer.nshapes == n_shapes + 1
+    np.testing.assert_allclose(layer.data[-1], vertices[:-1], rtol=0, atol=0)
+    assert not np.array_equal(layer.data[-1][0], layer.data[-1][-1])
+
+
+@pytest.mark.parametrize(
     ('preserve_lasso_vertices', 'expected_added'), [(False, 0), (True, 1)]
 )
 def test_polygon_lasso_preserves_sampled_vertices(
@@ -1161,8 +1277,7 @@ def test_finish_polygon_with_data_rewriting_listener(
     )
 
 
-def _draw_polygon(layer, coords):
-    """Click each coordinate, then double-click to finish."""
+def _click_polygon_vertices(layer, coords):
     for coord in coords:
         for kind, callbacks in (
             ('mouse_move', mouse_move_callbacks),
@@ -1177,10 +1292,101 @@ def _draw_polygon(layer, coords):
                     pos=np.array(coord, dtype=float),
                 ),
             )
+
+
+def _draw_polygon(layer, coords):
+    """Click each coordinate, then double-click to finish."""
+    _click_polygon_vertices(layer, coords)
     mouse_double_click_callbacks(
         layer,
         read_only_mouse_event(type='mouse_double_click', position=coords[-1]),
     )
+
+
+def test_clicking_near_first_polygon_vertex_closes_polygon(
+    create_known_shapes_layer,
+):
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+    vertices = np.array([[20, 20], [20, 50], [60, 50]])
+    layer.scale_factor = 1
+    layer.mode = 'add_polygon'
+    added = _record_added(layer)
+
+    _click_polygon_vertices(layer, vertices)
+
+    first = vertices[0] + [0, 4]
+    mouse_move_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_move',
+            position=first,
+            pos=np.asarray(first, dtype=float),
+        ),
+    )
+    mouse_press_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_press',
+            position=first,
+            pos=np.asarray(first, dtype=float),
+        ),
+    )
+    mouse_release_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_release',
+            position=first,
+            pos=np.asarray(first, dtype=float),
+        ),
+    )
+    mouse_double_click_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_double_click',
+            position=first,
+            pos=np.asarray(first, dtype=float),
+        ),
+    )
+
+    assert layer.nshapes == n_shapes + 1
+    np.testing.assert_allclose(layer.data[-1], vertices)
+    assert layer.shape_type[-1] == 'polygon'
+    assert not layer.is_creating
+    assert added == [(n_shapes,)]
+
+
+def test_clicking_first_polygon_vertex_does_not_close_two_vertices(
+    create_known_shapes_layer,
+):
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+    vertices = np.array([[20, 20], [20, 50]])
+    layer.scale_factor = 1
+    layer.mode = 'add_polygon'
+
+    _click_polygon_vertices(layer, vertices)
+    first = vertices[0]
+    mouse_move_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_move',
+            position=first,
+            pos=np.asarray(first, dtype=float),
+        ),
+    )
+    mouse_press_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_press',
+            position=first,
+            pos=np.asarray(first, dtype=float),
+        ),
+    )
+
+    assert layer.is_creating
+    assert layer.nshapes == n_shapes + 1
+
+    key_bindings.finish_drawing_shape(layer)
+    assert layer.nshapes == n_shapes
 
 
 def _record_added(layer):

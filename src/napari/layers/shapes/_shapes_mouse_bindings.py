@@ -410,6 +410,11 @@ def add_path_polygon_lasso(
         while event.type == 'mouse_move':
             polygon_creating(layer, event)
             yield
+        # A key binding or external controller may finish the lasso while this
+        # drag generator is suspended. The subsequent mouse release then has
+        # no in-flight shape to inspect or finish.
+        if not layer._is_creating:
+            return
         index = layer._moving_value[0]
         vertices = layer._data_view.shapes[index].data
         # If number of vertices is higher than 2, tablet draw mode is assumed and shape is finished upon mouse release
@@ -514,6 +519,18 @@ def add_path_polygon(layer: Shapes, event: MouseEvent) -> None:
     else:
         # Add to an existing path or polygon
         index = layer._moving_value[0]
+        vertices = layer._data_view.shapes[index].data
+        displayed = layer._slice_input.displayed
+        if (
+            layer._mode == Mode.ADD_POLYGON
+            and len(vertices) > 3
+            and np.all(
+                np.abs(coordinates[displayed] - vertices[0, displayed])
+                <= layer._normalized_vertex_radius
+            )
+        ):
+            layer._finish_drawing()
+            return
         new_type = Polygon if layer._mode == Mode.ADD_POLYGON else None
         # Ensure the position of the new vertex is different from the previous
         # one before adding it. See napari/napari#6597
