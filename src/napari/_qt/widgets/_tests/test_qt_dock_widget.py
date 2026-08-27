@@ -4,9 +4,11 @@ import sys
 import pytest
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
+    QWIDGETSIZE_MAX,
     QDockWidget,
     QHBoxLayout,
     QPushButton,
+    QSizePolicy,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -174,6 +176,37 @@ def test_adding_stretch(make_napari_viewer):
         widg, area='bottom', add_vertical_stretch=True
     )
     assert widg.layout().count() == 1
+    dw.close()
+
+
+def test_dock_widget_can_grow_vertically(make_napari_viewer):
+    """A dock is capped at its widget's size hint unless the widget's vertical size policy can grow."""
+    viewer = make_napari_viewer()
+
+    # a compact widget is held at its size hint rather than stretched
+    widg = QWidget()
+    widg.setLayout(QVBoxLayout())
+    widg.layout().addWidget(QPushButton())
+    dw = viewer.window.add_dock_widget(widg, area='right')
+    assert dw.layout().maximumSize().height() < QWIDGETSIZE_MAX
+    dw.close()
+
+    # ... unless it holds a widget that wants vertical space
+    widg = QWidget()
+    widg.setLayout(QVBoxLayout())
+    widg.layout().addWidget(QTextEdit())
+    dw = viewer.window.add_dock_widget(widg, area='right')
+    assert dw.layout().maximumSize().height() == QWIDGETSIZE_MAX
+    dw.close()
+
+    # ... or asks for it itself, while the horizontal policy is still normalized
+    widg = QWidget()
+    widg.setSizePolicy(
+        QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+    )
+    dw = viewer.window.add_dock_widget(widg, area='right')
+    assert dw.layout().maximumSize().height() == QWIDGETSIZE_MAX
+    assert widg.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Preferred
     dw.close()
 
 
