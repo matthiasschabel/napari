@@ -39,6 +39,34 @@ dock_area_to_str = {
 }
 
 
+def _wants_vertical_space(widget: QWidget) -> bool:
+    """Whether a widget, or one of its direct children, asks to grow vertically."""
+    exempt_policies = {
+        QSizePolicy.Policy.Expanding,
+        QSizePolicy.Policy.MinimumExpanding,
+        QSizePolicy.Policy.Ignored,
+    }
+    if widget.sizePolicy().verticalPolicy() in exempt_policies:
+        return True
+
+    # not uncommon to see people shadow the builtin layout() method
+    try:
+        wlayout = widget.layout()
+    except TypeError:
+        return False
+    if wlayout is None:
+        return False
+
+    for i in range(wlayout.count()):
+        wdg = wlayout.itemAt(i).widget()
+        if (
+            wdg is not None
+            and wdg.sizePolicy().verticalPolicy() in exempt_policies
+        ):
+            return True
+    return False
+
+
 class QtViewerDockWidget(QDockWidget):
     """Wrap a QWidget in a QDockWidget and forward viewer events
 
@@ -128,10 +156,12 @@ class QtViewerDockWidget(QDockWidget):
 
         is_vertical = area in {'left', 'right'}
         widget_ = combine_widgets(widget, vertical=is_vertical)
-        widget_.setSizePolicy(
-            QSizePolicy.Policy.Preferred,
-            QSizePolicy.Policy.Maximum,
+        vertical_policy = (
+            widget_.sizePolicy().verticalPolicy()
+            if _wants_vertical_space(widget_)
+            else QSizePolicy.Policy.Maximum
         )
+        widget_.setSizePolicy(QSizePolicy.Policy.Preferred, vertical_policy)
         self.setWidget(widget_)
         if is_vertical and add_vertical_stretch:
             self._maybe_add_vertical_stretch(widget_)
@@ -202,12 +232,7 @@ class QtViewerDockWidget(QDockWidget):
         ...if there is not already a widget that wants vertical space
         (like a textedit or listwidget or something).
         """
-        exempt_policies = {
-            QSizePolicy.Expanding,
-            QSizePolicy.MinimumExpanding,
-            QSizePolicy.Ignored,
-        }
-        if widget.sizePolicy().verticalPolicy() in exempt_policies:
+        if _wants_vertical_space(widget):
             return
 
         # not uncommon to see people shadow the builtin layout() method
@@ -218,14 +243,6 @@ class QtViewerDockWidget(QDockWidget):
                 return
         except TypeError:
             return
-
-        for i in range(wlayout.count()):
-            wdg = wlayout.itemAt(i).widget()
-            if (
-                wdg is not None
-                and wdg.sizePolicy().verticalPolicy() in exempt_policies
-            ):
-                return
 
         # not all widgets have addStretch...
         if hasattr(wlayout, 'addStretch'):
