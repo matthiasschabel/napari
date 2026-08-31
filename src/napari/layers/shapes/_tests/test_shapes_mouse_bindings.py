@@ -314,6 +314,51 @@ def test_visibility_change_finishes_staged_shape(create_known_shapes_layer):
     assert layer._data_view.staged_index is None
 
 
+def test_not_displayed_axis_uses_aggregate_geometry():
+    """A layer with a non-displayed axis keeps the aggregate creation path.
+
+    The aggregate arrays then hold only the shapes on the current slice, so
+    those on other slices make the displayed index runs discontiguous and a
+    staged shape with no aggregate range of its own cannot be addressed.
+    """
+
+    def rectangle(z, offset):
+        return [
+            [z, offset, offset],
+            [z, offset, offset + 5],
+            [z, offset + 5, offset + 5],
+            [z, offset + 5, offset],
+        ]
+
+    layer = Shapes([rectangle(0, 0), rectangle(1, 10), rectangle(0, 20)])
+    layer.scale_factor = 0.001
+    assert layer._data_view._displayed.tolist() == [True, False, True]
+
+    layer.mode = 'add_rectangle'
+    mouse_press_callbacks(
+        layer,
+        read_only_mouse_event(type='mouse_press', position=[0, 40, 40]),
+    )
+    assert layer._data_view.staged_index is None
+
+    mouse_move_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_move', is_dragging=True, position=[0, 50, 60]
+        ),
+    )
+    mouse_release_callbacks(
+        layer,
+        read_only_mouse_event(type='mouse_release', position=[0, 50, 60]),
+    )
+
+    assert layer.nshapes == 4
+    np.testing.assert_allclose(
+        layer.data[-1],
+        [[0, 40, 40], [0, 40, 60], [0, 50, 60], [0, 50, 40]],
+    )
+
+
 @pytest.mark.parametrize('shape_type', ['rectangle', 'ellipse', 'line'])
 def test_add_simple_shape_drawing_events(
     shape_type, create_known_shapes_layer

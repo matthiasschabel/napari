@@ -2225,6 +2225,9 @@ class Shapes(Layer):
                     gui
                     and self._is_creating
                     and n_new_shapes == 1
+                    # With non-displayed axes the aggregate arrays hold only
+                    # the shapes on the current slice, so a staged shape with
+                    # no aggregate range breaks their index bookkeeping.
                     and self.ndim == self._slice_input.ndisplay
                 ),
             )
