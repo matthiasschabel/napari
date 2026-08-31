@@ -2309,7 +2309,7 @@ def test_drag_start_selection(
     assert layer._drag_start is None
 
 
-def _press(layer, position, pos, button=1, double_click=False):
+def _press_at(layer, position, pos, button=1, double_click=False):
     event_type = 'mouse_double_click' if double_click else 'mouse_press'
     event = read_only_mouse_event(
         type=event_type, position=position, pos=np.array(pos), button=button
@@ -2336,7 +2336,7 @@ def _draw_vertices(layer, positions, move=True):
     """
     for i, position in enumerate(positions):
         pos = (float(i + 1), float(i + 1))
-        _press(layer, position, pos)
+        _press_at(layer, position, pos)
         if move:
             _move(layer, position, pos)
 
@@ -2354,7 +2354,7 @@ def test_right_click_removes_last_placed_vertex(
 
     # Away from every placed vertex: adding one here would be visible in the
     # comparison below, where adding one on top of the last would not.
-    _press(layer, (5, 5), (9.0, 9.0), button=2)
+    _press_at(layer, (5, 5), (9.0, 9.0), button=2)
 
     assert layer._is_creating
     assert len(layer.data) == n_shapes + 1
@@ -2379,7 +2379,7 @@ def test_right_click_past_first_vertex_discards_shape(
     _draw_vertices(layer, [(0, 0), (0, 10), (10, 10)])
 
     for i in range(len(layer.data[-1])):
-        _press(layer, (10, 10), (9.0 - i, 9.0 - i), button=2)
+        _press_at(layer, (10, 10), (9.0 - i, 9.0 - i), button=2)
         if not layer._is_creating:
             break
 
@@ -2399,8 +2399,8 @@ def test_right_double_click_removes_a_vertex(mode, create_known_shapes_layer):
 
     # A canvas double click arrives as a press followed by a double-click
     # event, so both clicks have to take a vertex back.
-    _press(layer, (5, 5), (9.0, 9.0), button=2)
-    _press(layer, (5, 5), (9.0, 9.0), button=2, double_click=True)
+    _press_at(layer, (5, 5), (9.0, 9.0), button=2)
+    _press_at(layer, (5, 5), (9.0, 9.0), button=2, double_click=True)
 
     assert layer._is_creating
     np.testing.assert_array_equal(
@@ -2419,12 +2419,12 @@ def test_vertex_can_be_placed_again_after_removal(
     _draw_vertices(layer, [(0, 0), (0, 10), (10, 10)])
     n_vertices = len(layer.data[-1])
 
-    _press(layer, (5, 5), (9.0, 9.0), button=2)
+    _press_at(layer, (5, 5), (9.0, 9.0), button=2)
     assert len(layer.data[-1]) == n_vertices - 1
 
     # The canvas position of the most recent click is what the duplicate-click
     # guard holds, and a removal must not leave it holding one.
-    _press(layer, (0, 10), (3.0, 3.0))
+    _press_at(layer, (0, 10), (3.0, 3.0))
     assert len(layer.data[-1]) == n_vertices
 
 
@@ -2435,7 +2435,7 @@ def test_right_click_before_drawing_does_nothing(
     layer, n_shapes, _ = create_known_shapes_layer
     layer.mode = mode
 
-    _press(layer, (5, 5), (9.0, 9.0), button=2)
+    _press_at(layer, (5, 5), (9.0, 9.0), button=2)
 
     assert not layer._is_creating
     assert len(layer.data) == n_shapes

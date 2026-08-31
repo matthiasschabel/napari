@@ -490,7 +490,11 @@ def remove_last_vertex_from_path(layer: Shapes) -> None:
         layer._finish_drawing()
         return
 
-    layer._data_view.edit(index, np.delete(vertices, -2, axis=0))
+    trimmed = np.delete(vertices, -2, axis=0)
+    if index == layer._data_view.staged_index:
+        layer._data_view.edit_staged(index, trimmed)
+    else:
+        layer._data_view.edit(index, trimmed)
     layer._value = (index, len(vertices) - 2)
     layer._moving_value = copy(layer._value)
     # The removed vertex was the one the duplicate-click guard compares
