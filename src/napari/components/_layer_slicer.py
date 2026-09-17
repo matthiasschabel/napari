@@ -153,7 +153,7 @@ class _LayerSlicer:
         TimeoutError: when the timeout limit has been exceeded and the task is
             not yet complete
         """
-        futures = self._layers_to_task.values()
+        futures = tuple(self._layers_to_task.values())
         _, not_done_futures = wait(futures, timeout=timeout)
 
         if len(not_done_futures) > 0:
