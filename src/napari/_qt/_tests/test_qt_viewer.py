@@ -3,6 +3,7 @@ from __future__ import annotations
 import gc
 import os
 import typing
+from contextlib import suppress
 from itertools import product, takewhile
 from math import isclose
 from unittest import mock
@@ -12,7 +13,7 @@ import numpy.testing as npt
 import pytest
 from imageio import imread
 from pytestqt.qtbot import QtBot
-from qtpy.QtCore import QEvent, QPointF
+from qtpy.QtCore import QEvent, QObject, QPointF
 from qtpy.QtGui import QEnterEvent
 from qtpy.QtWidgets import QApplication, QMessageBox
 from scipy import ndimage as ndi
@@ -34,6 +35,7 @@ from napari.utils.colormaps import DirectLabelColormap, label_colormap
 from napari.utils.interactions import mouse_press_callbacks
 
 if typing.TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
     from numpy.typing import ArrayLike
@@ -658,15 +660,52 @@ def test_insert_layer_ordering(
     assert pl2_vispy.order == 0
 
 
-def test_create_non_empty_viewer_model(qtbot: QtBot) -> None:
+@pytest.mark.parametrize('grid_enabled', [False, True], ids=['single', 'grid'])
+def test_create_non_empty_viewer_model(
+    qtbot: QtBot, grid_enabled: bool
+) -> None:
     viewer_model = ViewerModel()
-    viewer_model.add_points([(1, 2), (2, 3)])
+    image = viewer_model.add_image(np.zeros((4, 4)))
+    points = viewer_model.add_points([(1, 2), (2, 3)])
+    if grid_enabled:
+        # Keep both layers in one viewbox so their relative order is defined.
+        viewer_model.canvas.grid.stride = 2
+        viewer_model.canvas.grid.enabled = True
 
     viewer = QtViewer(viewer=viewer_model)
 
+    assert all(
+        layer in viewer.canvas.layer_to_visual for layer in (image, points)
+    )
+    visuals = [
+        viewer.canvas.layer_to_visual[layer] for layer in (image, points)
+    ]
+    assert [visual.order for visual in visuals] == [0, 1]
+    assert [visual.first_visible for visual in visuals] == [True, False]
     viewer.close()
     viewer.deleteLater()
     # try to del local reference for gc.
+    del viewer_model
+    del viewer
+    qtbot.wait(50)
+    gc.collect()
+
+
+def test_create_non_empty_viewer_model_with_visible_scene_overlay(
+    qtbot: QtBot,
+) -> None:
+    viewer_model = ViewerModel()
+    viewer_model.add_image(np.zeros((4, 4)))
+    points = viewer_model.add_points([(1, 2), (2, 3)])
+    points.bounding_box.visible = True
+
+    viewer = QtViewer(viewer=viewer_model)
+
+    assert (
+        points.bounding_box in viewer.canvas._layer_overlay_to_visual[points]
+    )
+    viewer.close()
+    viewer.deleteLater()
     del viewer_model
     del viewer
     qtbot.wait(50)
@@ -1271,12 +1310,36 @@ def test_dask_cache():
     )
 
 
+class _NativeMouseMoveFilter(QObject):
+    def eventFilter(self, obj, event):
+        return event.type() == QEvent.Type.MouseMove
+
+
+@pytest.fixture
+def qt_viewer_without_pointer_moves(qt_viewer: QtViewer) -> Iterator[QtViewer]:
+    """Shown viewer that ignores moves of the physical mouse pointer.
+
+    Drag tests emit synthetic vispy events; a real pointer crossing the window
+    would otherwise inject a move without modifiers and cancel the drag.
+    """
+    native = qt_viewer.canvas._scene_canvas.native
+    event_filter = _NativeMouseMoveFilter(native)
+    native.installEventFilter(event_filter)
+    yield qt_viewer
+    # The filter is parented to the canvas, so a canvas already torn down by
+    # the viewer fixture has taken the filter with it.
+    with suppress(RuntimeError):
+        native.removeEventFilter(event_filter)
+
+
 @pytest.mark.show_qt_viewer
 def test_viewer_drag_to_zoom(
-    qt_viewer: QtViewer, viewer_model: ViewerModel, qtbot: QtBot
+    qt_viewer_without_pointer_moves: QtViewer,
+    viewer_model: ViewerModel,
+    qtbot: QtBot,
 ) -> None:
     """Test drag to zoom mouse binding."""
-    canvas = qt_viewer.canvas
+    canvas = qt_viewer_without_pointer_moves.canvas
 
     def zoom_callback(data_positions):
         """Mock zoom callback to check zoom box visibility."""
@@ -1339,10 +1402,12 @@ def test_viewer_drag_to_zoom(
 
 @pytest.mark.show_qt_viewer
 def test_viewer_drag_to_zoom_with_cancel(
-    qt_viewer: QtViewer, viewer_model: ViewerModel, qtbot: QtBot
+    qt_viewer_without_pointer_moves: QtViewer,
+    viewer_model: ViewerModel,
+    qtbot: QtBot,
 ) -> None:
     """Test drag to zoom mouse binding."""
-    canvas = qt_viewer.canvas
+    canvas = qt_viewer_without_pointer_moves.canvas
 
     zoom_area_mock = mock.Mock()
 

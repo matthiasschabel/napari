@@ -905,7 +905,10 @@ class VispyCanvas:
         first_visible_found = False
 
         for i, layer in enumerate(layers):
-            vispy_layer = self.layer_to_visual[layer]
+            vispy_layer = self.layer_to_visual.get(layer)
+            # QtViewer reorders before later visuals exist; the final add restores pre-populated order.
+            if vispy_layer is None:
+                continue
             vispy_layer.order = i
 
             # the bottommost visible layer needs special treatment for blending
@@ -1389,6 +1392,9 @@ class VispyCanvas:
             self._reorder_layers()
             self._update_viewer_overlays()
             for layer in self.viewer.layers:
+                # QtViewer updates overlays before later visuals exist; the final add reruns the pass.
+                if layer not in self.layer_to_visual:
+                    continue
                 self._update_layer_overlays(layer)
             self._on_interactive()
         self.on_draw()
@@ -1408,7 +1414,10 @@ class VispyCanvas:
 
             for idx in layer_indices:
                 napari_layer = self.viewer.layers[idx]
-                vispy_layer = self.layer_to_visual[napari_layer]
+                vispy_layer = self.layer_to_visual.get(napari_layer)
+                # QtViewer reorders before later visuals exist; the final add restores pre-populated order.
+                if vispy_layer is None:
+                    continue
                 vispy_layer.node.parent = view.scene
 
     @property
