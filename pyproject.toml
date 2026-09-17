@@ -167,6 +167,7 @@ testing = [
     "IPython>=7.25.0",
     "qtconsole>=4.5.1",
     "rich>=14.0.0",
+    "shapely>=2.0",
     "napari[optional-base, bermuda]",
 ]
 testing_extra = [
@@ -257,6 +258,7 @@ testing = [
     "IPython>=7.25.0",
     "qtconsole>=4.5.1",
     "rich>=14.0.0",
+    "shapely>=2.0",
     "napari[optional-base, bermuda]",
 ]
 testing_extra = [

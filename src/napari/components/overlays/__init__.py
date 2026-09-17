@@ -18,6 +18,8 @@ from napari.components.overlays.labels_brush_stroke import (
 from napari.components.overlays.labels_polygon import LabelsPolygonOverlay
 from napari.components.overlays.scale_bar import ScaleBarOverlay
 from napari.components.overlays.scene_axes import SceneAxesOverlay
+from napari.components.overlays.scene_line import SceneLineOverlay
+from napari.components.overlays.scene_mesh import SceneMeshOverlay
 from napari.components.overlays.text import (
     CurrentSliceOverlay,
     LayerNameOverlay,
@@ -39,6 +41,8 @@ __all__ = [
     'Overlay',
     'ScaleBarOverlay',
     'SceneAxesOverlay',
+    'SceneLineOverlay',
+    'SceneMeshOverlay',
     'SceneOverlay',
     'SelectionBoxOverlay',
     'TextOverlay',

@@ -30,6 +30,8 @@ from napari._vispy.overlays.labels_brush_stroke import (
 from napari._vispy.overlays.labels_polygon import VispyLabelsPolygonOverlay
 from napari._vispy.overlays.scale_bar import VispyScaleBarOverlay
 from napari._vispy.overlays.scene_axes import VispySceneAxesOverlay
+from napari._vispy.overlays.scene_line import VispySceneLineOverlay
+from napari._vispy.overlays.scene_mesh import VispySceneMeshOverlay
 from napari._vispy.overlays.text import (
     VispyCurrentSliceOverlay,
     VispyLayerNameOverlay,
@@ -49,6 +51,8 @@ from napari.components.overlays import (
     Overlay,
     ScaleBarOverlay,
     SceneAxesOverlay,
+    SceneLineOverlay,
+    SceneMeshOverlay,
     SelectionBoxOverlay,
     TextOverlay,
     TransformBoxOverlay,
@@ -83,6 +87,8 @@ overlay_to_visual: dict[type[Overlay], type[VispyBaseOverlay]] = {
     ScaleBarOverlay: VispyScaleBarOverlay,
     TextOverlay: VispyTextOverlay,
     SceneAxesOverlay: VispySceneAxesOverlay,
+    SceneLineOverlay: VispySceneLineOverlay,
+    SceneMeshOverlay: VispySceneMeshOverlay,
     CanvasAxesOverlay: VispyCanvasAxesOverlay,
     DirectionLabelsOverlay: VispyDirectionLabelsOverlay,
     BoundingBoxOverlay: VispyBoundingBoxOverlay,
