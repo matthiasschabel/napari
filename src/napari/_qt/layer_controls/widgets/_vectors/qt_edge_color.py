@@ -296,7 +296,9 @@ class QtEdgeColorFeatureControl(QtWidgetControlsBase):
             self._on_colormap_change()
             self._on_contrast_limits_change()
 
-    def get_widget_controls(self) -> list[tuple[QtWrappedLabel, QWidget]]:
+    def get_widget_controls(
+        self,
+    ) -> list[tuple[QtWrappedLabel, QWidget] | tuple[QWidget]]:
         return [
             (self.color_mode_label, self.color_mode_combobox),
             (self.edge_color_label, self.edge_color_edit),

@@ -56,7 +56,7 @@ class VispyScalarFieldBaseLayer(VispyBaseLayer[ScalarFieldBase]):
     ) -> None:
         self._last_matrix_change_state: _MatrixChangeState | None = None
         # Use custom node from caller, or our standard image/volume nodes.
-        self._layer_node = layer_node_class(
+        self._layer_node = layer_node_class(  # pyrefly: ignore [bad-instantiation]
             node, texture_format=texture_format
         )
 
@@ -258,7 +258,7 @@ class VispyScalarFieldBaseLayer(VispyBaseLayer[ScalarFieldBase]):
                 scale[d] = downsample[i]
 
             # tile2data is a ScaleTransform thus is has a .scale attribute, but
-            # mypy cannot know this.
+            # pyrefly cannot know this.
             self.layer._transforms['tile2data'].scale = scale
 
             self._on_matrix_change()
