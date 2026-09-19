@@ -1,9 +1,18 @@
 # Compositional core split
 
-**Status:** Active
-**Last updated:** 2026-09-17
+**Status:** Superseded
+**Last updated:** 2026-09-19
 **Scope:** `src/napari/experimental/_data_model/`, the `integration` branch, and
 this exploration branch
+
+The extraction and reconciliation described below were completed on 2026-09-17.
+The production placement decision was superseded on 2026-09-19 by
+[the branch boundary](../compositional_model_boundary.md): pirana currently
+consumes none of this model, so integration no longer contains it. Core retains
+the extracted model and receives production fixes by merging integration;
+exploration receives those changes by merging core. The original design below
+is preserved as the extraction rationale, not an instruction to merge core
+back into integration.
 
 ## Context
 
@@ -182,7 +191,6 @@ the two-consumer ImageBinding example
 
 ## Next Steps
 
-1. Build `compositional-core` per step 3, against
-   [core_manifest.md](core_manifest.md), and verify it in isolation.
-2. Merge into `integration`; reconcile this branch.
-3. Prepare the two upstream PRs.
+Follow the synchronization and adoption gates in
+[the branch boundary](../compositional_model_boundary.md). The extraction and
+original merges are complete; production adoption requires a concrete consumer.

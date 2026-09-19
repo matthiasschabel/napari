@@ -167,6 +167,9 @@ class Shapes(Layer):
         Name of the layer.
     opacity : float
         Opacity of the layer visual, between 0.0 and 1.0.
+    preserve_lasso_vertices : bool
+        Whether polygon lasso completion keeps every sampled vertex instead of applying
+        Ramer-Douglas-Peucker simplification.
     projection_mode : str
         How data outside the viewed dimensions but inside the thick Dims slice will
         be projected onto the viewed dimenions.
@@ -256,6 +259,12 @@ class Shapes(Layer):
         List of currently selected shapes.
     nshapes : int
         Total number of shapes.
+    is_creating : bool
+        Read-only flag that is ``True`` while a shape is being drawn, from the
+        first vertex until the shape is finished or cancelled. The
+        ``drawing_started`` and ``drawing_finished`` events fire at its
+        boundaries. Unlike ``mode`` (which stays on an ``add_*`` value before,
+        during, and after a draw) this tracks the actual construction window.
     mode : Mode
         Interactive mode. The normal, default mode is PAN_ZOOM, which
         allows for normal interactivity with the canvas.
@@ -367,6 +376,8 @@ class Shapes(Layer):
     # in the thumbnail
     _max_shapes_thumbnail = 100
 
+    LASSO_VERTEX_PRESERVATION_VERSION = 1
+
     _drag_modes: ClassVar[dict[Mode, Callable[[Shapes, Event], Any]]] = {
         Mode.PAN_ZOOM: no_op,
         Mode.TRANSFORM: transform_with_box,
@@ -461,6 +472,7 @@ class Shapes(Layer):
         metadata=None,
         name=None,
         opacity=0.7,
+        preserve_lasso_vertices=False,
         projection_mode='none',
         properties=None,
         property_choices=None,
@@ -517,7 +529,14 @@ class Shapes(Layer):
             highlight=Event,
             features=Event,
             feature_defaults=Event,
+            drawing_started=Event,
+            drawing_finished=Event,
+            preserve_lasso_vertices=Event,
+            _active_shape=Event,
         )
+
+        self._preserve_lasso_vertices = False
+        self.preserve_lasso_vertices = preserve_lasso_vertices
 
         # Flag set to false to block thumbnail refresh
         self._allow_thumbnail_update = True
@@ -574,7 +593,12 @@ class Shapes(Layer):
         self._is_selecting = False
         self._drag_box = None
         self._drag_box_stored = None
-        self._is_creating = False
+        self._private_is_creating = False
+        # Out-of-plane (not-displayed) data coordinates captured when a draw
+        # begins, so every vertex of an in-progress shape stays pinned to its
+        # origin slice even if a navigable (exempt) axis is stepped mid-draw
+        # (napari #9207). {data_axis: value}; empty when not drawing.
+        self._creation_anchor: dict[int, float] = {}
         self._clipboard: dict[str, Shapes] = {}
         self._outlines_cache: dict[
             int | None, tuple[np.ndarray, np.ndarray, np.ndarray]
@@ -688,6 +712,12 @@ class Shapes(Layer):
         # not given a shape_type through data
         if shape_type is None:
             shape_type = self.shape_type
+        elif isinstance(shape_type, str):
+            # A single type applies to every shape. Broadcast it here, because
+            # the trimming and extending below are list operations: slicing a
+            # str silently yields a shorter str, and concatenating a list to
+            # one raises.
+            shape_type = [shape_type] * n_new_shapes
 
         edge_widths = self._data_view.edge_widths
         edge_color = self._data_view.edge_color
@@ -889,7 +919,10 @@ class Shapes(Layer):
             # To avoid performance cost of repeated update calls, we batch the updates
             with self._data_view.batched_updates():
                 for i in self.selected_data:
-                    self._data_view.update_edge_width(i, edge_width)
+                    if i == self._data_view.staged_index:
+                        self._data_view.update_staged_edge_width(i, edge_width)
+                    else:
+                        self._data_view.update_edge_width(i, edge_width)
         self.events.edge_width()
 
     @property
@@ -1210,7 +1243,10 @@ class Shapes(Layer):
             widths = [width for _ in range(self.nshapes)]
         with self._data_view.batched_updates():
             for i, width in enumerate(widths):
-                self._data_view.update_edge_width(i, width)
+                if i == self._data_view.staged_index:
+                    self._data_view.update_staged_edge_width(i, width)
+                else:
+                    self._data_view.update_edge_width(i, width)
 
     @property
     def z_index(self):
@@ -1228,6 +1264,9 @@ class Shapes(Layer):
         z_index : int or list of int
             z-index of shapes
         """
+        if self._data_view.staged_index is not None:
+            self._finish_drawing()
+
         if isinstance(z_index, list):
             if not len(z_index) == self.nshapes:
                 raise ValueError(
@@ -1309,6 +1348,45 @@ class Shapes(Layer):
         if value:
             assert self._moving_coordinates is not None
         self._private_is_moving = value
+
+    @property
+    def is_creating(self) -> bool:
+        """bool: whether a shape is currently being drawn.
+
+        ``True`` from the moment the first vertex of a new shape is placed
+        until the shape is finished or cancelled. Unlike ``mode``, which stays
+        on an ``add_*`` value before, during, and after a draw, this tracks the
+        actual construction window. The ``drawing_started`` and
+        ``drawing_finished`` events fire at its boundaries.
+
+        Lifecycle order for one drawn shape is::
+
+            drawing_started -> data(ADDING) -> drawing_finished -> data(ADDED)
+
+        ``drawing_finished`` means the geometry is final, not that every
+        notification has been delivered: it fires before the settled
+        ``data(ADDED)``, so a ``data`` listener always observes
+        ``is_creating`` as ``False`` and may safely write to ``data`` from
+        within the callback.
+        """
+        return self._is_creating
+
+    @property
+    def _is_creating(self) -> bool:
+        return self._private_is_creating
+
+    @_is_creating.setter
+    def _is_creating(self, value: bool) -> None:
+        value = bool(value)
+        if value == self._private_is_creating:
+            return
+        self._private_is_creating = value
+        if value:
+            self.events.drawing_started()
+        else:
+            # Drop the origin-slice anchor; the next draw re-captures it.
+            self._creation_anchor = {}
+            self.events.drawing_finished()
 
     def _set_color(self, color, attribute: str):
         """Set the face_color or edge_color property
@@ -1612,6 +1690,7 @@ class Shapes(Layer):
                 'text': self.text.model_dump(),
                 'shape_type': self.shape_type,
                 'opacity': self.opacity,
+                'preserve_lasso_vertices': self.preserve_lasso_vertices,
                 'z_index': self.z_index,
                 'edge_width': self.edge_width,
                 'face_color': face_color,
@@ -1630,6 +1709,22 @@ class Shapes(Layer):
         return state
 
     @property
+    def preserve_lasso_vertices(self) -> bool:
+        """Whether polygon lasso completion preserves every sampled vertex.
+
+        .. versionadded:: 0.9.0
+        """
+        return self._preserve_lasso_vertices
+
+    @preserve_lasso_vertices.setter
+    def preserve_lasso_vertices(self, preserve: bool) -> None:
+        if not isinstance(preserve, bool):
+            raise TypeError('preserve_lasso_vertices must be a bool')
+        if self._preserve_lasso_vertices != preserve:
+            self._preserve_lasso_vertices = preserve
+            self.events.preserve_lasso_vertices()
+
+    @property
     def _view_indices(self):
         return np.where(self._data_view._displayed)[0]
 
@@ -1641,6 +1736,8 @@ class Shapes(Layer):
         highlights (interaction box, vertices, and outlines) are only drawn for
         the shapes visible in the current slice.
         """
+        if self._is_creating:
+            return list(self.selected_data)
         view_indices = set(self._view_indices.tolist())
         return [i for i in self.selected_data if i in view_indices]
 
@@ -2104,10 +2201,16 @@ class Shapes(Layer):
         n_new_shapes = number_of_shapes(data)
 
         if n_new_shapes > 0:
+            # Shapes are appended, so the indices they will occupy are known in
+            # advance. This is a prediction: a listener of ADDING may itself add
+            # or remove shapes, which is why ADDED recomputes rather than reusing
+            # this tuple.
             self.events.data(
                 value=self.data,
                 action=ActionType.ADDING,
-                data_indices=(-1,),
+                data_indices=tuple(
+                    range(self.nshapes, self.nshapes + n_new_shapes)
+                ),
                 vertex_indices=((),),
             )
             self._add_shapes(
@@ -2118,13 +2221,26 @@ class Shapes(Layer):
                 face_color=face_color,
                 z_index=z_index,
                 n_new_shapes=n_new_shapes,
+                stage=(
+                    gui
+                    and self._is_creating
+                    and n_new_shapes == 1
+                    # With non-displayed axes the aggregate arrays hold only
+                    # the shapes on the current slice, so a staged shape with
+                    # no aggregate range breaks their index bookkeeping.
+                    and self.ndim == self._slice_input.ndisplay
+                ),
             )
             # This should only emit when programmatically adding as with drawing this leads to premature emit.
             if not gui:
                 self.events.data(
                     value=self.data,
                     action=ActionType.ADDED,
-                    data_indices=(-1,),
+                    # Computed after the append, so it stays correct even if an
+                    # ADDING listener changed the layer in the meantime.
+                    data_indices=tuple(
+                        range(self.nshapes - n_new_shapes, self.nshapes)
+                    ),
                     vertex_indices=((),),
                 )
                 self.events.features()
@@ -2233,6 +2349,7 @@ class Shapes(Layer):
         face_color=None,
         z_index=None,
         n_new_shapes=0,
+        stage=False,
     ):
         """Add shapes to the data view.
 
@@ -2275,6 +2392,8 @@ class Shapes(Layer):
             shapes.
         n_new_shapes : int
             The number of new shapes to be added to the Shapes layer.
+        stage : bool
+            Whether one topmost GUI-created shape may bypass aggregate geometry.
         """
         if n_new_shapes > 0:
             total_shapes = n_new_shapes + self.nshapes
@@ -2338,13 +2457,17 @@ class Shapes(Layer):
                 strict=False,
             )
 
-            self._add_shapes_to_view(shape_inputs, self._data_view)
+            self._add_shapes_to_view(
+                shape_inputs, self._data_view, stage=stage
+            )
 
         self._display_order_stored = copy(self._slice_input.order)
         self._ndisplay_stored = copy(self._slice_input.ndisplay)
         self._update_dims()
 
-    def _add_shapes_to_view(self, shape_inputs, data_view: ShapeList):
+    def _add_shapes_to_view(
+        self, shape_inputs, data_view: ShapeList, *, stage: bool = False
+    ):
         """Build new shapes and add them to the _data_view"""
 
         shape_inputs = tuple(shape_inputs)
@@ -2367,15 +2490,31 @@ class Shapes(Layer):
 
         shapes, edge_colors, face_colors = tuple(zip(*sh_inp, strict=False))
 
-        # Add all shapes at once (faster than adding them one by one)
-        data_view.add(
-            shape=shapes,
-            edge_color=edge_colors,
-            face_color=face_colors,
-            z_refresh=False,
+        can_stage = (
+            stage
+            and data_view is self._data_view
+            and len(shapes) == 1
+            and (
+                len(data_view._z_index) == 0
+                or shapes[0].z_index >= np.max(data_view._z_index)
+            )
         )
-
-        data_view._update_z_order()
+        if can_stage:
+            data_view.add_staged(
+                shapes[0],
+                edge_color=edge_colors[0],
+                face_color=face_colors[0],
+            )
+            self.events._active_shape()
+        else:
+            # Add all shapes at once (faster than adding them one by one)
+            data_view.add(
+                shape=shapes,
+                edge_color=edge_colors,
+                face_color=face_colors,
+                z_refresh=False,
+            )
+            data_view._update_z_order()
 
     @property
     def text(self) -> TextManager:
@@ -2414,6 +2553,16 @@ class Shapes(Layer):
 
     def _set_view_slice(self):
         """Set the view given the slicing indices."""
+        slice_key = np.array(self._data_slice.point)[
+            self._slice_input.not_displayed
+        ]
+        if self._data_view.staged_index is not None and (
+            self._slice_input.ndisplay != self._ndisplay_stored
+            or self._slice_input.order != self._display_order_stored
+            or not np.array_equal(slice_key, self._data_view.slice_key)
+        ):
+            self._finish_drawing()
+
         view_changed = False
         with self._data_view.batched_updates():
             ndisplay = self._slice_input.ndisplay
@@ -2430,9 +2579,6 @@ class Shapes(Layer):
                 self._clipboard = {}
                 view_changed = True
 
-            slice_key = np.array(self._data_slice.point)[
-                self._slice_input.not_displayed
-            ]
             if not np.array_equal(slice_key, self._data_view.slice_key):
                 view_changed = True
             self._data_view.slice_key = slice_key
@@ -2525,6 +2671,21 @@ class Shapes(Layer):
         extent: bool = True,
         force: bool = False,
     ) -> None:
+        if self._is_creating and self._data_view.staged_index is not None:
+            # The committed visual stays untouched while the active-shape
+            # subvisual owns the in-progress geometry.
+            if data_displayed:
+                self._clean_outline_cache()
+                self.events._active_shape()
+            super().refresh(
+                event,
+                thumbnail=False,
+                data_displayed=False,
+                highlight=highlight,
+                extent=extent,
+                force=force,
+            )
+            return
         if data_displayed:
             self._clean_outline_cache()
         super().refresh(
@@ -2565,24 +2726,35 @@ class Shapes(Layer):
             # Only consider the hovered shape if it is in view and not already
             # selected (selected shapes are highlighted via selected_in_view).
             value = self._value[0]
-            if value is not None and value not in self._view_indices:
+            staged_index = self._data_view.staged_index
+            value_is_staged_in_view = (
+                value == staged_index
+                and staged_index is not None
+                and self._data_view._displayed[staged_index]
+            )
+            if (
+                value is not None
+                and not value_is_staged_in_view
+                and value not in self._view_indices
+            ):
                 value = None
             if value in selected_in_view:
                 value = None
             if value is None and not selected_in_view:
                 return None, None
 
+            index = list(self.selected_data)
+            if value is not None:
+                index.append(value)
+            # Keep only shapes on the current slice (see docstring). Drop the
+            # rest so an off-slice selection/hover does not leak a highlight.
+            index = sorted(i for i in index if self._data_view._displayed[i])
+            if not index:
+                return None, None
+
             if value in self._outlines_cache:
                 centers, offsets, triangles = self._outlines_cache[value]
             else:
-                if len(selected_in_view) > 0:
-                    index = list(selected_in_view)
-                    if value is not None:
-                        index.append(value)
-                    index.sort()
-                else:
-                    index = value
-
                 centers, offsets, triangles = self._data_view.outline(index)
                 self._outlines_cache[value] = (
                     centers,
@@ -2653,11 +2825,27 @@ class Shapes(Layer):
                 ]
             ):
                 # If in one of these mode show the vertices of the shape itself
-                inds = np.isin(
-                    self._data_view.displayed_vertices_to_shape_num,
-                    list(selected_in_view),
-                )
-                vertices = self._data_view.displayed_vertices[inds][:, ::-1]
+                staged_index = self._data_view.staged_index
+                committed_selection = [
+                    i for i in selected_in_view if i != staged_index
+                ]
+                if committed_selection:
+                    inds = np.isin(
+                        self._data_view.displayed_vertices_to_shape_num,
+                        committed_selection,
+                    )
+                    vertices = self._data_view.displayed_vertices[inds][
+                        :, ::-1
+                    ]
+                else:
+                    vertices = np.empty((0, self._slice_input.ndisplay))
+                if staged_index in selected_in_view:
+                    staged_vertices = self._data_view.shapes[
+                        staged_index
+                    ].data_displayed[:, ::-1]
+                    vertices = np.concatenate(
+                        [vertices, staged_vertices], axis=0
+                    )
                 # If currently adding path don't show box over last vertex
                 if self._mode == Mode.ADD_POLYLINE:
                     vertices = vertices[:-1]
@@ -2723,6 +2911,14 @@ class Shapes(Layer):
     def _finish_drawing(self, event=None) -> None:
         """Reset properties used in shape drawing."""
         index = copy(self._moving_value[0])
+        # `_moving_value` also holds an existing shape's index during a move or
+        # selection, and this method is called unconditionally by the `data` and
+        # `shape_type` setters. Only a shape that was actually being created, and
+        # was not then dropped for having too few vertices, counts as added.
+        was_creating = self._is_creating
+        discarded = False
+        staged_index = self._data_view.staged_index
+        removed_staged = False
         self._is_moving = False
         self._drag_start = None
         self._drag_box = None
@@ -2731,25 +2927,64 @@ class Shapes(Layer):
         self._value = (None, None)
         self._moving_value = (None, None)
         self._last_cursor_position = None
-        if self._is_creating is True:
+        # remove() deletes the shape under construction before calling here, so
+        # the index taken from _moving_value can no longer resolve.
+        if index is not None and index >= len(self._data_view.shapes):
+            index = None
+        if self._is_creating is True and index is not None:
             if self._mode in {Mode.ADD_PATH, Mode.ADD_POLYLINE}:
                 vertices = self._data_view.shapes[index].data
                 if len(vertices) <= 2:
-                    self._data_view.remove(index)
+                    if index == staged_index:
+                        self._data_view.remove_staged(index)
+                        removed_staged = True
+                    else:
+                        self._data_view.remove(index)
+                    discarded = True
                     # Clear selected data to prevent issues.
                     # See https://github.com/napari/napari/pull/6912#discussion_r1601169680
                     self.selected_data.clear()
                 else:
-                    self._data_view.edit(index, vertices[:-1])
+                    if index == staged_index:
+                        self._data_view.edit_staged(index, vertices[:-1])
+                    else:
+                        self._data_view.edit(index, vertices[:-1])
             if self._mode in {Mode.ADD_POLYGON, Mode.ADD_POLYGON_LASSO}:
                 vertices = self._data_view.shapes[index].data
-                if self._mode == Mode.ADD_POLYGON_LASSO:
-                    prev_vertices = len(vertices)
+                raw_committed_vertices = vertices[:-1]
+                if (
+                    self._mode == Mode.ADD_POLYGON_LASSO
+                    and not self.preserve_lasso_vertices
+                ):
                     vertices = rdp(
                         vertices,
                         epsilon=get_settings().experimental.rdp_epsilon,
                     )
-                    if len(vertices) <= 3 and prev_vertices > 3:
+                committed_vertices = vertices[:-1]
+                rdp_made_polygon_too_small = (
+                    self._mode == Mode.ADD_POLYGON_LASSO
+                    and not self.preserve_lasso_vertices
+                    and len(raw_committed_vertices) >= 3
+                    and len(committed_vertices) < 3
+                )
+                if len(committed_vertices) > 1:
+                    dtype = np.result_type(
+                        committed_vertices.dtype, np.float64
+                    )
+                    scale = max(
+                        1.0,
+                        float(np.max(np.abs(committed_vertices[[0, -1]]))),
+                    )
+                    atol = 8 * np.finfo(dtype).eps * scale
+                    if np.allclose(
+                        committed_vertices[0],
+                        committed_vertices[-1],
+                        rtol=0,
+                        atol=atol,
+                    ):
+                        committed_vertices = committed_vertices[:-1]
+                if len(committed_vertices) < 3:
+                    if rdp_made_polygon_too_small:
                         # https://github.com/napari/napari/issues/7903
                         show_warning(
                             'Polygons must have three or more vertices. '
@@ -2760,28 +2995,48 @@ class Shapes(Layer):
                             'try reducing napari > Settings > '
                             'Experimental > RDP epsilon. ',
                         )
-                if len(vertices) <= 3:
-                    self._data_view.remove(index)
+                    if index == staged_index:
+                        self._data_view.remove_staged(index)
+                        removed_staged = True
+                    else:
+                        self._data_view.remove(index)
+                    discarded = True
                     # Clear selected data to prevent issues.
                     # See https://github.com/napari/napari/pull/6912#discussion_r1601169680
                     self.selected_data.clear()
                 else:
-                    self._data_view.edit(
-                        index,
-                        vertices[:-1],
-                        new_type=shape_classes[ShapeType.POLYGON],
-                    )
+                    if index == staged_index:
+                        self._data_view.edit_staged(
+                            index,
+                            committed_vertices,
+                            new_type=shape_classes[ShapeType.POLYGON],
+                        )
+                    else:
+                        self._data_view.edit(
+                            index,
+                            committed_vertices,
+                            new_type=shape_classes[ShapeType.POLYGON],
+                        )
+            if staged_index is not None and not removed_staged:
+                self._data_view.commit_staged(staged_index)
+        if removed_staged:
+            self.events._active_shape()
+        # Clear the drawing state before callbacks can re-enter through the data setter.
+        self._is_creating = False
         # handles the case that
         if index is not None:
             self.events.data(
                 value=self.data,
                 action=ActionType.ADDED,
-                data_indices=(-1,),
+                data_indices=(index,)
+                if was_creating and not discarded
+                else (),
                 vertex_indices=((),),
             )
             self.events.features()
-        self._is_creating = False
         self._update_dims()
+        if staged_index is not None and not removed_staged:
+            self.events._active_shape()
 
     @contextmanager
     def block_thumbnail_update(self):
@@ -2837,6 +3092,12 @@ class Shapes(Layer):
         indices : List[int]
             List of indices of shapes to remove from the layer.
         """
+        staged_index = self._data_view.staged_index
+        if staged_index is not None:
+            self._finish_drawing()
+            if staged_index >= self.nshapes:
+                indices = [i for i in indices if i != staged_index]
+
         to_remove = sorted(indices, reverse=True)
 
         if len(indices) > 0:
@@ -3223,6 +3484,8 @@ class Shapes(Layer):
 
     def move_to_front(self) -> None:
         """Moves selected objects to be displayed in front of all others."""
+        if self._data_view.staged_index is not None:
+            self._finish_drawing()
         if len(self.selected_data) == 0:
             return
         new_z_index = max(self._data_view._z_index) + 1
@@ -3232,6 +3495,8 @@ class Shapes(Layer):
 
     def move_to_back(self) -> None:
         """Moves selected objects to be displayed behind all others."""
+        if self._data_view.staged_index is not None:
+            self._finish_drawing()
         if len(self.selected_data) == 0:
             return
         new_z_index = min(self._data_view._z_index) - 1

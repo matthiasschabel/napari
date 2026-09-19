@@ -36,6 +36,20 @@ def _bounding_box_world_vertices(viewer, layer):
     return transform.map(vertices)
 
 
+def test_nonmultiscale_bounding_box_gets_child_offset(make_napari_viewer):
+    viewer = make_napari_viewer()
+    layer = viewer.add_image(np.ones((8, 8)))
+
+    layer.bounding_box.visible = True
+
+    bounding_box = viewer.window._qt_viewer.canvas._layer_overlay_to_visual[
+        layer
+    ][layer.bounding_box]
+    np.testing.assert_array_equal(
+        bounding_box.node.transform.matrix[-1, :2], (0.5, 0.5)
+    )
+
+
 @pytest.mark.skipif(
     sys.platform == 'win32', reason='This new test is flaky on windows'
 )

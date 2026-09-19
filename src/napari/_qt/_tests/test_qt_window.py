@@ -59,6 +59,11 @@ def test_current_viewer(make_napari_viewer):
 
 
 def test_shutdown_stops_worker_threads(make_napari_viewer):
+    """Threads owned by a still-open window are stopped at interpreter exit.
+
+    Interpreter shutdown reaches neither closeEvent nor hideEvent, and Qt
+    aborts the process if it destroys a window whose threads still run.
+    """
     viewer = make_napari_viewer()
     window = viewer.window._qt_window
     assert window in _QtMainWindow._instances
@@ -71,6 +76,21 @@ def test_shutdown_stops_worker_threads(make_napari_viewer):
 
     stop_status.assert_called_once_with()
     stop_animation.assert_called_once_with()
+
+
+def test_shutdown_tolerates_deleted_windows(make_napari_viewer):
+    """A window whose Qt object is already gone must not break the handler."""
+    viewer = make_napari_viewer()
+    window = viewer.window._qt_window
+
+    with patch.object(
+        window,
+        '_stop_worker_threads',
+        side_effect=RuntimeError(
+            'wrapped C/C++ object of type _QtMainWindow has been deleted'
+        ),
+    ):
+        _shutdown_open_windows()
 
 
 def test_set_geometry(make_napari_viewer):

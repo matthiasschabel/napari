@@ -1,8 +1,154 @@
 import numpy as np
+from vispy.visuals.mesh import MeshVisual
 
 from napari._vispy.layers.shapes import VispyShapesLayer
 from napari._vispy.utils.qt_font import FontInfo
+from napari._vispy.visuals.mesh import Mesh
+from napari.components import Dims, ViewerModel
 from napari.layers import Shapes
+from napari.utils._test_utils import read_only_mouse_event
+from napari.utils.interactions import (
+    mouse_move_callbacks,
+    mouse_press_callbacks,
+    mouse_release_callbacks,
+)
+
+
+def test_active_shape_overlay_tracks_staged_geometry():
+    viewer = ViewerModel()
+    layer = viewer.add_shapes([np.array([[0, 0], [0, 2], [2, 2], [2, 0]])])
+    vispy_layer = VispyShapesLayer(layer, font_info=FontInfo())
+    assert vispy_layer.node._subvisuals[0] is vispy_layer.node.shape_faces
+    assert vispy_layer.node._subvisuals[1] is vispy_layer.node.shape_highlights
+    assert vispy_layer.node._subvisuals[2] is vispy_layer.node.highlight_lines
+    layer.mode = 'add_rectangle'
+
+    mouse_press_callbacks(
+        layer,
+        read_only_mouse_event(type='mouse_press', position=[5, 5]),
+    )
+    mouse_move_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_move', is_dragging=True, position=[10, 12]
+        ),
+    )
+
+    vertices = vispy_layer.node.shape_highlights.mesh_data.get_vertices()
+    index = layer._data_view.staged_index
+    assert index is not None
+    shape = layer._data_view.shapes[index]
+    expected_vertices = np.concatenate(
+        [
+            shape._face_vertices,
+            shape._edge_vertices + shape.edge_width * shape._edge_offsets,
+        ]
+    )[:, ::-1]
+    np.testing.assert_allclose(
+        vertices[: len(expected_vertices)], expected_vertices
+    )
+
+    mouse_release_callbacks(
+        layer,
+        read_only_mouse_event(type='mouse_release', position=[10, 12]),
+    )
+
+    outline_vertices, outline_faces = layer._outline_shapes()
+    np.testing.assert_allclose(
+        vispy_layer.node.shape_highlights.mesh_data.get_vertices(),
+        outline_vertices,
+    )
+    np.testing.assert_array_equal(
+        vispy_layer.node.shape_highlights.mesh_data.get_faces(), outline_faces
+    )
+
+
+SQUARE = np.array([[0, 0], [0, 10], [10, 10], [10, 0]])
+
+
+def test_empty_shape_faces_are_hidden_until_data_is_added():
+    layer = Shapes()
+    vispy_layer = VispyShapesLayer(layer, font_info=FontInfo())
+
+    assert not vispy_layer.node.shape_faces.visible
+
+    layer.add(SQUARE)
+    assert vispy_layer.node.shape_faces.visible
+
+    layer.data = []
+    assert not vispy_layer.node.shape_faces.visible
+
+
+def test_shape_faces_are_hidden_only_while_the_slice_is_empty():
+    shape = np.pad(SQUARE, ((0, 0), (1, 0)))
+    layer = Shapes(shape)
+    vispy_layer = VispyShapesLayer(layer, font_info=FontInfo())
+
+    assert vispy_layer.node.shape_faces.visible
+
+    layer._slice_dims(Dims(ndim=3, point=(1, 0, 0)))
+    assert not vispy_layer.node.shape_faces.visible
+
+    layer._slice_dims(Dims(ndim=3, point=(0, 0, 0)))
+    assert vispy_layer.node.shape_faces.visible
+
+
+def test_shape_highlights_are_hidden_until_a_shape_is_selected():
+    layer = Shapes(SQUARE)
+    vispy_layer = VispyShapesLayer(layer, font_info=FontInfo())
+    highlight_nodes = (
+        vispy_layer.node.shape_highlights,
+        vispy_layer.node.highlight_lines,
+        vispy_layer.node.highlight_vertices,
+    )
+
+    assert [node.visible for node in highlight_nodes] == [False, False, False]
+
+    layer.mode = 'select'
+    layer.selected_data = {0}
+    assert [node.visible for node in highlight_nodes] == [True, True, True]
+
+    layer.selected_data = set()
+    assert [node.visible for node in highlight_nodes] == [False, False, False]
+
+
+def test_shape_text_is_hidden_when_no_text_is_visible():
+    layer = Shapes(text={'string': {'constant': 'label'}})
+    vispy_layer = VispyShapesLayer(layer, font_info=FontInfo())
+    text_node = vispy_layer._get_text_node()
+
+    assert not text_node.visible
+
+    layer.add(SQUARE)
+    assert text_node.visible
+
+    layer.text.visible = False
+    assert not text_node.visible
+
+
+def test_repeated_mesh_updates_reuse_rgba_color_transform():
+    shape = np.array([[0, 0], [0, 10], [10, 10], [10, 0]])
+    layer = Shapes(shape)
+    vispy_layer = VispyShapesLayer(layer, font_info=FontInfo())
+    mesh = vispy_layer.node.shape_faces
+
+    rgba = np.zeros((3, 4), dtype=np.float32)
+    vispy_color_transform = MeshVisual._build_color_transform(mesh, rgba)
+    assert Mesh._null_color_transform.code == vispy_color_transform.code
+
+    scalar_values = np.zeros((3, 1), dtype=np.float32)
+    assert (
+        mesh._build_color_transform(scalar_values)
+        is not Mesh._null_color_transform
+    )
+
+    mesh._update_data()
+    color_transform = mesh.shared_program.vert['color_transform']
+
+    layer.face_color = 'red'
+    mesh._update_data()
+
+    assert mesh.shared_program.vert['color_transform'] is color_transform
 
 
 def test_remove_selected_with_derived_text():

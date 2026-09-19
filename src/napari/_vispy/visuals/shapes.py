@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from vispy.scene.visuals import Compound, Line, Markers, Mesh
+from vispy.scene.visuals import Compound, Line, Markers
 
 from napari._vispy.visuals.clipping_planes_mixin import ClippingPlanesMixin
+from napari._vispy.visuals.mesh import Mesh
 from napari._vispy.visuals.text import Text
 
 if TYPE_CHECKING:
@@ -18,7 +19,7 @@ class ShapesVisual(ClippingPlanesMixin, Compound):
 
     Components:
         - Mesh for shape faces (vispy.MeshVisual)
-        - Mesh for highlights (vispy.MeshVisual)
+        - Mesh for the active shape and highlights (vispy.MeshVisual)
         - Lines for highlights (vispy.LineVisual)
         - Vertices for highlights (vispy.MarkersVisual)
         - Text labels (vispy.TextVisual)
@@ -43,7 +44,7 @@ class ShapesVisual(ClippingPlanesMixin, Compound):
 
     @property
     def shape_highlights(self) -> Mesh:
-        """Mesh for shape highlights"""
+        """Mesh for the active shape and shape highlights."""
         return self._subvisuals[1]
 
     @property

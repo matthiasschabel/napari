@@ -53,10 +53,9 @@ def extend_selection_to_layer_below(viewer: ViewerModel) -> None:
 
 @register_viewer_action('Toggle 2D/3D view')
 def toggle_ndisplay(viewer: ViewerModel) -> None:
-    if viewer.dims.ndisplay == 2:
-        viewer.dims.ndisplay = 3
-    else:
-        viewer.dims.ndisplay = 2
+    # Delegate to the single guarded implementation shared with the View menu
+    # action so both paths honor the navigation lock identically.
+    viewer._toggle_ndisplay()
 
 
 # Making this an action makes vispy really unhappy during the tests
@@ -222,7 +221,7 @@ def toggle_console_visibility(qt_viewer: QtViewer) -> None:
     else:
         # old action_manager path :( :(, where
         # toggle_console_visibility is treated as bound method...
-        qt_viewer.window._qt_viewer.toggle_console_visibility()  # type: ignore[attr-defined]
+        qt_viewer.window._qt_viewer.toggle_console_visibility()  # pyrefly: ignore [missing-attribute]
 
 
 @register_viewer_action('Press and hold for move camera mode')
@@ -236,7 +235,7 @@ def hold_for_pan_zoom(viewer: ViewerModel) -> Generator[None, None, None]:
     # but they should all have a PAN_ZOOM value. At the time of writing
     # these enums do not share a base class or protocol, so ignore the
     # attribute check for now.
-    pan_zoom = selected_layer._modeclass.PAN_ZOOM  # type: ignore[attr-defined]
+    pan_zoom = selected_layer._modeclass.PAN_ZOOM  # pyrefly: ignore [missing-attribute]
     if previous_mode != pan_zoom:
         selected_layer.mode = pan_zoom
         yield

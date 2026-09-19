@@ -28,6 +28,63 @@ if TYPE_CHECKING:
     from napari.layers.shapes.shapes import Shapes
 
 
+def _creation_coordinates(
+    layer: Shapes, event: NapariMouseEvent
+) -> npt.NDArray:
+    """Data coordinates for an in-progress vertex, pinned to the draw's origin slice.
+
+    While a shape is being created, the in-plane (displayed) axes track the
+    cursor as usual, but the out-of-plane (not-displayed) axes are held at the
+    values captured when the first vertex was placed. This keeps every vertex on
+    the shape's origin slice as the *slice point* of a not-displayed axis moves
+    (e.g. stepping a navigable/exempt axis mid-draw), so a shape cannot acquire
+    vertices on different slice indices (napari #9207).
+
+    Scope: this guards slice-*point* changes only. It does not make anchoring
+    valid across a *partition* change -- reordering axes (``Dims.order``) or
+    toggling 2D/3D (``Dims.ndisplay``) mid-draw changes *which* axes are
+    displayed, leaving the captured anchor keyed to the old axes. In a viewer
+    those routes are blocked while a shape is being created, because the layer
+    takes the Dims navigation lock (with ``lock_order=True``) for the duration
+    of the draw (see ``ViewerModel._on_layer_drawing_started``). The anchor is
+    the geometry-level backstop for the slice-point case and for standalone
+    layers not wired to a Dims lock; it does not by itself cover partitions.
+
+    The anchor is captured on the first call of a new draw -- ``_is_creating`` is
+    still ``False`` at the first vertex of every shape type and flips ``True``
+    immediately after -- and applied on every subsequent call.
+
+    This fixes the *geometry* (vertices never span slices). The *interaction* of
+    navigating an exempt axis mid-draw is fully smooth only for click-based
+    drawing: a real slice change clears ``selected_data``, which stalls the
+    drag-follow of a held-button draw until napari preserves the in-progress
+    selection across a reslice (gh #9059). Geometry stays pinned in both cases.
+    """
+    coordinates = layer.world_to_data(event.position)
+    not_displayed = layer._slice_input.not_displayed
+    if not layer._is_creating:
+        # First vertex of a new shape: capture the origin-slice anchor.
+        layer._creation_anchor = {
+            axis: float(coordinates[axis]) for axis in not_displayed
+        }
+        return coordinates
+    if layer._creation_anchor:
+        if set(layer._creation_anchor) == set(not_displayed):
+            coordinates = np.array(coordinates, dtype=float)
+            for axis, value in layer._creation_anchor.items():
+                coordinates[axis] = value
+        else:
+            # A partition change (order/ndisplay) reshaped which axes are
+            # displayed, so the anchor is keyed to the old axes; applying it
+            # would overwrite a now-displayed axis. Invalidate it -- correctness
+            # degrades to pre-anchor behavior rather than corrupting geometry.
+            # In a viewer the draw holds the navigation lock (lock_order=True),
+            # so this branch is only reached when nothing engages that lock
+            # (e.g. a standalone layer driven directly in a test).
+            layer._creation_anchor = {}
+    return coordinates
+
+
 def highlight(layer: Shapes, event: MouseEvent) -> None:
     """Render highlights of shapes.
 
@@ -174,7 +231,7 @@ def add_line(layer: Shapes, event: MouseEvent) -> Generator[None, None, None]:
     for i in layer._slice_input.displayed:
         full_size[i] = size
 
-    coordinates = layer.world_to_data(event.position)
+    coordinates = _creation_coordinates(layer, event)
     layer._moving_coordinates = coordinates
 
     # corner is first datapoint defining the line
@@ -206,7 +263,7 @@ def add_ellipse(
     size_v = np.zeros(layer.ndim, dtype=float)
     size_v[layer._slice_input.displayed[1]] = size
 
-    coordinates = layer.world_to_data(event.position)
+    coordinates = _creation_coordinates(layer, event)
     corner = np.array(coordinates)
     data = np.array(
         [corner, corner + size_v, corner + size_h + size_v, corner + size_h]
@@ -234,7 +291,7 @@ def add_rectangle(
     size_v = np.zeros(layer.ndim, dtype=float)
     size_v[layer._slice_input.displayed[1]] = size
 
-    coordinates = layer.world_to_data(event.position)
+    coordinates = _creation_coordinates(layer, event)
     corner = np.array(coordinates)
     data = np.array(
         [corner, corner + size_v, corner + size_h + size_v, corner + size_h]
@@ -276,7 +333,7 @@ def _add_line_rectangle_ellipse(
     # on move
     while event.type == 'mouse_move':
         # Drag any selected shapes
-        coordinates = layer.world_to_data(event.position)
+        coordinates = _creation_coordinates(layer, event)
         layer._moving_coordinates = coordinates
         _move_active_element_under_cursor(layer, coordinates)
         yield
@@ -296,9 +353,15 @@ def finish_drawing_shape(layer: Shapes, event: MouseEvent) -> None:
     layer : Shapes
         Napari shapes layer
     event : MouseEvent
-        A proxy read only wrapper around a vispy mouse event. Not used here, but passed as argument due to being a
-        double click callback of the shapes layer.
+        A proxy read only wrapper around a vispy mouse event. Used to remove a
+        vertex on a right double click rather than finish the shape.
     """
+    if event.button == 2:
+        # A double click arrives as one mouse press followed by this event, so
+        # the second click of a right double click removes its vertex here.
+        if layer._is_creating:
+            remove_last_vertex_from_path(layer)
+        return
     layer._finish_drawing()
 
 
@@ -341,7 +404,7 @@ def add_path_polygon_lasso(
         A proxy read only wrapper around a vispy mouse event.
     """
     # on press
-    coordinates = layer.world_to_data(event.position)
+    coordinates = _creation_coordinates(layer, event)
     if layer._is_creating is False:
         # Set last cursor position to initial position of the mouse when starting to draw the shape
         layer._last_cursor_position = np.array(event.pos)
@@ -353,6 +416,11 @@ def add_path_polygon_lasso(
         while event.type == 'mouse_move':
             polygon_creating(layer, event)
             yield
+        # A key binding or external controller may finish the lasso while this
+        # drag generator is suspended. The subsequent mouse release then has
+        # no in-flight shape to inspect or finish.
+        if not layer._is_creating:
+            return
         index = layer._moving_value[0]
         vertices = layer._data_view.shapes[index].data
         # If number of vertices is higher than 2, tablet draw mode is assumed and shape is finished upon mouse release
@@ -394,8 +462,45 @@ def add_vertex_to_path(
         value = layer._moving_value
     layer._value = (value[0], value[1] + 1)
     layer._moving_value = copy(layer._value)
-    layer._data_view.edit(index, vertices, new_type=new_type)
+    if index == layer._data_view.staged_index:
+        layer._data_view.edit_staged(index, vertices, new_type=new_type)
+    else:
+        layer._data_view.edit(index, vertices, new_type=new_type)
     layer._last_cursor_position = np.array(event.pos)
+
+
+def remove_last_vertex_from_path(layer: Shapes) -> None:
+    """Remove the most recently placed vertex of the shape being drawn.
+
+    The final vertex of a shape under construction tracks the cursor, so the
+    most recently placed vertex is the second to last one. When no placed
+    vertex is left to remove, the shape under construction is discarded.
+
+    Parameters
+    ----------
+    layer : Shapes
+        Napari shapes layer
+    """
+    index = layer._moving_value[0]
+    vertices = layer._data_view.shapes[index].data
+    if len(vertices) <= 2:
+        # Only the first vertex and the vertex tracking the cursor are left, so
+        # there is no partial shape to keep. Finishing discards a shape this
+        # small, which is what Enter and Escape already do here.
+        layer._finish_drawing()
+        return
+
+    trimmed = np.delete(vertices, -2, axis=0)
+    if index == layer._data_view.staged_index:
+        layer._data_view.edit_staged(index, trimmed)
+    else:
+        layer._data_view.edit(index, trimmed)
+    layer._value = (index, len(vertices) - 2)
+    layer._moving_value = copy(layer._value)
+    # The removed vertex was the one the duplicate-click guard compares
+    # against, so forget it: clicking the same spot again must put it back.
+    layer._last_cursor_position = None
+    layer.refresh()
 
 
 def polygon_creating(layer: Shapes, event: MouseEvent) -> None:
@@ -415,7 +520,7 @@ def polygon_creating(layer: Shapes, event: MouseEvent) -> None:
         A proxy read only wrapper around a vispy mouse event.
     """
     if layer._is_creating:
-        coordinates = layer.world_to_data(event.position)
+        coordinates = _creation_coordinates(layer, event)
         move_active_vertex_under_cursor(layer, coordinates)
 
         if layer._mode in [Mode.ADD_POLYGON_LASSO, Mode.ADD_PATH]:
@@ -435,7 +540,8 @@ def add_path_polygon(layer: Shapes, event: MouseEvent) -> None:
     """Add a path or polygon or add vertex to an existing one.
 
     When shape is not yet being created, initiates the drawing of a polygon on mouse press. Else, on subsequent mouse
-    presses, add vertex to polygon being created.
+    presses, add vertex to polygon being created. A right press removes the
+    most recently placed vertex instead, as in the Labels polygon tool.
 
     Parameters
     ----------
@@ -445,7 +551,11 @@ def add_path_polygon(layer: Shapes, event: MouseEvent) -> None:
         A proxy read only wrapper around a vispy mouse event.
     """
     # on press
-    coordinates = layer.world_to_data(event.position)
+    if event.button == 2:
+        if layer._is_creating:
+            remove_last_vertex_from_path(layer)
+        return
+    coordinates = _creation_coordinates(layer, event)
     if layer._is_creating is False:
         # Set last cursor position to initial position of the mouse when starting to draw the shape
         layer._last_cursor_position = np.array(event.pos)
@@ -454,6 +564,18 @@ def add_path_polygon(layer: Shapes, event: MouseEvent) -> None:
     else:
         # Add to an existing path or polygon
         index = layer._moving_value[0]
+        vertices = layer._data_view.shapes[index].data
+        displayed = layer._slice_input.displayed
+        if (
+            layer._mode == Mode.ADD_POLYGON
+            and len(vertices) > 3
+            and np.all(
+                np.abs(coordinates[displayed] - vertices[0, displayed])
+                <= layer._normalized_vertex_radius
+            )
+        ):
+            layer._finish_drawing()
+            return
         new_type = Polygon if layer._mode == Mode.ADD_POLYGON else None
         # Ensure the position of the new vertex is different from the previous
         # one before adding it. See napari/napari#6597
@@ -895,9 +1017,14 @@ def _add_rectangle_ellipse_line(
     scale_mat = np.array([[drag_scale[0], 0], [0, drag_scale[1]]])
     transform = rot @ scale_mat @ inv_rot
     index = next(iter(layer.selected_data))
-    layer._data_view.shift(index, -layer._fixed_vertex)
-    layer._data_view.transform(index, transform)
-    layer._data_view.shift(index, layer._fixed_vertex)
+    if index == layer._data_view.staged_index:
+        layer._data_view.shift_staged(index, -layer._fixed_vertex)
+        layer._data_view.transform_staged(index, transform)
+        layer._data_view.shift_staged(index, layer._fixed_vertex)
+    else:
+        layer._data_view.shift(index, -layer._fixed_vertex)
+        layer._data_view.transform(index, transform)
+        layer._data_view.shift(index, layer._fixed_vertex)
     layer._transform_box(transform, center=layer._fixed_vertex)
     layer.refresh()
 
@@ -961,5 +1088,13 @@ def _move_active_element_under_cursor(
                     vertices[0] = coordinates
             vertices[vertex] = coordinates
 
-            layer._data_view.edit(index, vertices, new_type=new_type)
+            if (
+                layer._mode != Mode.DIRECT
+                and index == layer._data_view.staged_index
+            ):
+                layer._data_view.edit_staged(
+                    index, vertices, new_type=new_type
+                )
+            else:
+                layer._data_view.edit(index, vertices, new_type=new_type)
             layer.refresh()

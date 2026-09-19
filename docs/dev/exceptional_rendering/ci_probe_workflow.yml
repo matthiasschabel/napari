@@ -1,0 +1,57 @@
+# DRAFT, not active. Copy to .github/workflows/gl_exceptional_probe.yml on a
+# fork and push to collect results from GitHub-hosted runners.
+#
+# What this can and cannot reach. GitHub-hosted runners have no discrete GPU,
+# so the Linux and Windows legs measure Mesa's software rasterizer, not a
+# vendor driver. The macOS legs are the valuable ones: they run on the real
+# Apple graphics stack, so macos-15 is a second Apple Silicon chip and macos-13
+# (if still offered) is an Intel Mac with a different GPU behind the same
+# Apple GL implementation. NVIDIA, AMD, and Intel drivers cannot be reached
+# this way at all and need either a volunteer or a self-hosted runner.
+
+name: GL exceptional-value probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.platform }}
+    continue-on-error: true  # one platform failing must not hide the others
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - ubuntu-latest       # Mesa llvmpipe, x86_64
+          - ubuntu-24.04-arm    # Mesa llvmpipe, arm64
+          - windows-latest      # Mesa3D offscreen
+          - macos-15            # real Apple Silicon, macOS 15
+          - macos-13            # Intel Mac, if the runner image still exists
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install
+        run: python -m pip install --upgrade pip numpy vispy PyQt5
+
+      - name: Setup headless display
+        uses: pyvista/setup-headless-display-action@v4.3
+        with:
+          qt: true
+
+      - name: Self-test the harness first
+        run: python docs/dev/exceptional_rendering/gl_probe.py --self-test
+
+      - name: Probe
+        run: python docs/dev/exceptional_rendering/gl_probe.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gl-probe-${{ matrix.platform }}
+          path: docs/dev/exceptional_rendering/results/*.json
+          if-no-files-found: error

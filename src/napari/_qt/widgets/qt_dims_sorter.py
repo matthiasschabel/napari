@@ -18,7 +18,7 @@ def set_dims_order(dims: Dims, order: tuple[int, ...]) -> None:
         New dimension order.
     """
     if type(order[0]) is AxisModel:
-        order = tuple(a.axis for a in order)
+        order = tuple(a.axis for a in order)  # pyrefly: ignore [missing-attribute]
     dims.order = order
 
 
@@ -77,6 +77,15 @@ class QtDimsSorter(QWidget):
         self.dims.events.order.connect(
             self._dims_order_callback,
         )
+        # Reordering axes changes which are displayed, which would strand an
+        # in-progress slice-keyed operation. The navigation lock does not guard
+        # the sorter's direct ``dims.order`` assignment, so disable the view
+        # while locked (mirrors QtDims disabling the slice sliders).
+        self.dims.events.navigation_lock.connect(self._on_navigation_lock)
+        self._on_navigation_lock()
+
+    def _on_navigation_lock(self) -> None:
+        self.view.setEnabled(not self.dims.navigation_locked)
 
     def _axis_list_reorder_callback(self, event: Event) -> None:
         set_dims_order(self.dims, event.value)

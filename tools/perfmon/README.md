@@ -60,3 +60,43 @@ was an improvement:
 ```shell
 python tools/perfmon/compare_callable.py slicing Layer.refresh latest test
 ```
+
+## Focused rendering probes
+
+Two standalone probes retain the transparent Shapes stream investigation. They
+isolate napari settings automatically and emit JSON to standard output:
+
+```shell
+python tools/perfmon/probe_shapes_transparent_stream_render.py \
+  --mode paired --paired-candidate triangles --style fill --shapes 16384
+python tools/perfmon/probe_shapes_transparent_stream_construction.py \
+  --count 4096 --shape polygon --backend fastest --repeats 7
+```
+
+The render probe requires a working Qt/OpenGL context. See
+`docs/dev/shapes_transparent_streams.md` for the measured matrix, raw samples,
+and interpretation.
+
+## Shapes active-edit probes
+
+The active-edit probe measures one-shape movement, growing a new 32-vertex
+path, and its one-shot commit against a large immutable Shapes layer. It forces
+each scene draw to GPU completion, so its frame times include CPU preparation,
+buffer upload, and rendering:
+
+```shell
+python tools/perfmon/probe_shapes_active_edit_overlay.py \
+  --shapes 10000 50000 --rays 32 --repeats 5
+```
+
+The layer-scaling companion keeps the total primitive count fixed while
+partitioning it across layers:
+
+```shell
+python tools/perfmon/probe_shapes_active_edit_layer_scaling.py \
+  --total-shapes 10000 --layers 1 10 100 --repeats 5
+```
+
+Both probes use a temporary napari settings file and print JSON to standard
+output. Run them in a normal desktop session with a real OpenGL context; Qt's
+offscreen platform is not a substitute for GPU-complete rendering.

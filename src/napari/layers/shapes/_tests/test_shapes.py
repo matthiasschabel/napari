@@ -1062,7 +1062,7 @@ def test_polygons(shape):
     assert layer2.events.data.call_args_list[0][1] == {
         'value': [],
         'action': ActionType.ADDING,
-        'data_indices': (-1,),
+        'data_indices': (0,),
         'vertex_indices': ((),),
     }
 
@@ -1072,8 +1072,99 @@ def test_polygons(shape):
     assert (
         layer2.events.data.call_args_list[0][1]['action'] == ActionType.ADDING
     )
-    assert layer2.events.data.call_args_list[0][1]['data_indices'] == (-1,)
+    assert layer2.events.data.call_args_list[0][1]['data_indices'] == (0,)
     assert layer2.events.data.call_args_list[0][1]['vertex_indices'] == ((),)
+
+
+def test_added_indices_survive_a_reentrant_add():
+    """ADDED names where the shape landed, not where it was predicted to land.
+
+    An ADDING listener may itself add shapes, which shifts the position the
+    outer call's shape ends up at. ADDED is therefore computed after the
+    append rather than reused from the ADDING prediction.
+    """
+
+    def square(centre, r=4.0):
+        return np.array(
+            [
+                [centre - r, centre - r],
+                [centre - r, centre + r],
+                [centre + r, centre + r],
+                [centre + r, centre - r],
+            ],
+            dtype=float,
+        )
+
+    layer = Shapes([square(10)], shape_type='polygon')
+    added = []
+    inserted = False
+
+    def on_data(event):
+        nonlocal inserted
+        if str(event.action) == 'added':
+            added.append(tuple(event.data_indices))
+        elif str(event.action) == 'adding' and not inserted:
+            inserted = True
+            layer.add([square(90)], shape_type='polygon')
+
+    layer.events.data.connect(on_data)
+    layer.add([square(50)], shape_type='polygon')
+
+    assert len(layer.data) == 3
+    # The nested add lands at 1; the outer one is pushed to 2.
+    assert added == [(1,), (2,)], added
+
+
+def test_add_reports_indices_for_a_batch():
+    """Adding several shapes to a non-empty layer names all of them."""
+
+    def square(centre, r=4.0):
+        return np.array(
+            [
+                [centre - r, centre - r],
+                [centre - r, centre + r],
+                [centre + r, centre + r],
+                [centre + r, centre - r],
+            ],
+            dtype=float,
+        )
+
+    layer = Shapes([square(10), square(30)], shape_type='polygon')
+    seen = []
+    layer.events.data.connect(
+        lambda event: seen.append(
+            (str(event.action), tuple(event.data_indices))
+        )
+    )
+
+    layer.add([square(50), square(70)], shape_type='polygon')
+
+    assert seen == [('adding', (2, 3)), ('added', (2, 3))], seen
+
+
+def test_finish_drawing_does_not_report_existing_shape_as_added():
+    """`_finish_drawing` outside a draw must not name an existing shape.
+
+    `_moving_value` also holds an existing shape's index during a move or
+    selection, and the `data` and `shape_type` setters call `_finish_drawing`
+    unconditionally.
+    """
+    square = np.array([[0, 0], [0, 10], [10, 10], [10, 0]])
+    layer = Shapes([square, square + 20], shape_type='polygon')
+
+    seen = []
+    layer.events.data.connect(
+        lambda event: seen.append(
+            (str(event.action), tuple(event.data_indices))
+        )
+    )
+
+    layer._moving_value = (1, None)
+    assert not layer._is_creating
+    layer._finish_drawing()
+
+    assert len(layer.data) == 2, 'nothing should have been added'
+    assert seen == [('added', ())], seen
 
 
 def test_add_polygons_raises_error():
@@ -1287,6 +1378,81 @@ def test_changing_shapes(ten_four_corner, twenty_four_corner):
     assert np.allclose(layer._data_view.face_color[:5], current_face_color)
     assert np.allclose(layer._data_view.edge_widths[:5], current_edge_width)
     assert np.allclose(layer._data_view.z_indices[:5], current_z)
+
+
+@pytest.mark.parametrize('n_new', [2, 3, 4])
+def test_setting_data_with_a_single_shape_type(n_new):
+    """`layer.data = (data, 'polygon')` applies that type to every shape.
+
+    The count may shrink, stay the same, or grow: the setter trims or extends
+    the per-shape attribute lists, and a single type has to be broadcast first
+    or those list operations are applied to a string.
+    """
+
+    def square(centre, r=6.0):
+        return np.array(
+            [
+                [centre - r, centre - r],
+                [centre - r, centre + r],
+                [centre + r, centre + r],
+                [centre + r, centre - r],
+            ],
+            dtype=float,
+        )
+
+    layer = Shapes([square(10), square(30), square(50)], shape_type='polygon')
+    layer.data = ([square(10 * (i + 1)) for i in range(n_new)], 'polygon')
+
+    assert layer.nshapes == n_new
+    assert list(layer.shape_type) == ['polygon'] * n_new
+
+
+def test_setting_data_overrides_a_stale_shape_type():
+    """A supplied type replaces what was stored, and per-shape style survives.
+
+    Without a supplied type the setter validates the new vertices against the
+    *previous* per-shape types, so replacing a line with a polygon raises and
+    the only route left is to clear the layer and re-add -- which drops the
+    per-shape edge color and width that an assignment keeps.
+    """
+    square = np.array([[0, 0], [0, 10], [10, 10], [10, 0]], dtype=float)
+    layer = Shapes()
+    layer.add(
+        [square, square + 20],
+        shape_type='polygon',
+        edge_color=['magenta', 'yellow'],
+        edge_width=[3.0, 7.0],
+    )
+    layer.add([np.array([[0.0, 0.0], [20.0, 20.0]])], shape_type='line')
+    assert list(layer.shape_type) == ['polygon', 'polygon', 'line']
+
+    # Four shapes from three, so the grow branch runs and the supplied type
+    # has to already be per-shape.
+    layer.data = (
+        [square, square + 20, square + 40, square + 60],
+        'polygon',
+    )
+
+    assert list(layer.shape_type) == ['polygon'] * 4
+    assert np.allclose(layer.edge_color[0], [1, 0, 1, 1])
+    assert np.allclose(layer.edge_color[1], [1, 1, 0, 1])
+    assert list(layer.edge_width[:2]) == [3.0, 7.0]
+
+
+def test_setting_data_on_an_empty_layer_keeps_the_supplied_type():
+    """Growing from empty must use the supplied type, not the default.
+
+    This is why the broadcast is sized to the incoming data rather than to the
+    layer's current shape count: with no shapes to derive a default from, the
+    grow branch would otherwise fill in 'polygon'.
+    """
+    line = np.array([[0.0, 0.0], [20.0, 20.0]])
+    layer = Shapes()
+
+    layer.data = ([line, line + 5], 'line')
+
+    assert layer.nshapes == 2
+    assert list(layer.shape_type) == ['line', 'line']
 
 
 def test_changing_shape_type():
@@ -1508,6 +1674,21 @@ def test_removing_shapes():
     layer.remove([])
 
 
+def test_removing_selected_shapes_mid_draw_cancels_the_draw():
+    from napari.layers.shapes._shapes_mouse_bindings import (
+        initiate_polygon_draw,
+    )
+
+    layer = Shapes()
+    layer.mode = 'add_polygon'
+    initiate_polygon_draw(layer, np.array([1.0, 1.0]))
+
+    layer.remove_selected()
+
+    assert layer._is_creating is False
+    assert layer.nshapes == 0
+
+
 def test_removing_selected_shapes():
     """Test removing selected shapes."""
     np.random.seed(0)
@@ -1629,6 +1810,15 @@ def test_changing_modes():
     layer.mode = 'pan_zoom'
     assert layer.mode == 'pan_zoom'
     assert layer.mouse_pan is True
+
+
+def test_vertex_modes_use_cross_cursor():
+    layer = Shapes()
+
+    layer.mode = 'vertex_insert'
+    assert layer.cursor == 'cross'
+    layer.mode = 'vertex_remove'
+    assert layer.cursor == 'cross'
 
 
 def test_name():
@@ -2329,6 +2519,25 @@ def test_value():
     assert value == (None, None)
 
 
+def test_value_with_fractional_slice_key():
+    """A non-integer translate puts the displayed slice between whole slices."""
+    layer = Shapes(ndim=3, translate=(5.1, 0, 0))
+    layer.add(
+        [np.array([[19, 10, 10], [19, 10, 20], [19, 20, 20], [19, 20, 10]])],
+        shape_type='rectangle',
+    )
+    layer._slice_dims(
+        Dims(
+            ndim=3,
+            ndisplay=2,
+            range=((0, 30, 1),) * 3,
+            point=(24, 0, 0),
+        )
+    )
+
+    assert layer.get_value((24, 15, 15), world=True) == (0, None)
+
+
 @pytest.mark.parametrize('scale', [(-1, -1), (1, -1), (-2, 3)])
 def test_value_vertex_with_negative_scale(scale):
     """Vertices must stay grabbable when the layer scale is negative.
@@ -2705,6 +2914,72 @@ def test_finish_drawing_called_when_is_creating():
         layer.mode = 'select'
         mock_finish.assert_called_once()
     assert not layer._is_creating
+
+
+def test_is_creating_and_drawing_events():
+    """is_creating tracks the draw window and emits started/finished events."""
+    layer = Shapes()
+    started = Mock()
+    finished = Mock()
+    layer.events.drawing_started.connect(started)
+    layer.events.drawing_finished.connect(finished)
+
+    # Freshly constructed: not creating. Construction initializes the backing
+    # field directly (not via the setter), so a same-value write must not emit.
+    assert layer.is_creating is False
+    layer._is_creating = False
+    started.assert_not_called()
+    finished.assert_not_called()
+
+    # False -> True fires drawing_started exactly once.
+    layer._is_creating = True
+    assert layer.is_creating is True
+    started.assert_called_once()
+    finished.assert_not_called()
+
+    # Repeated True is a no-op.
+    layer._is_creating = True
+    started.assert_called_once()
+
+    # True -> False fires drawing_finished exactly once.
+    layer._is_creating = False
+    assert layer.is_creating is False
+    finished.assert_called_once()
+
+    # Repeated False is a no-op.
+    layer._is_creating = False
+    finished.assert_called_once()
+
+
+def test_is_creating_is_read_only():
+    """is_creating is a read-only public view of the private flag."""
+    layer = Shapes()
+    with pytest.raises(AttributeError):
+        layer.is_creating = True
+
+
+@pytest.mark.parametrize('mode', ['add_polygon', 'add_path'])
+def test_drawing_events_via_multivertex_lifecycle(mode):
+    """A multi-vertex draw emits drawing_started on the first vertex and
+    exactly one drawing_finished when the draw ends."""
+    from napari.layers.shapes import _shapes_mouse_bindings as mb
+
+    layer = Shapes()
+    layer.mode = mode
+    started = Mock()
+    finished = Mock()
+    layer.events.drawing_started.connect(started)
+    layer.events.drawing_finished.connect(finished)
+
+    mb.initiate_polygon_draw(layer, np.array([10.0, 10.0]))
+    assert layer.is_creating is True
+    started.assert_called_once()
+    finished.assert_not_called()
+
+    layer._finish_drawing()
+    assert layer.is_creating is False
+    started.assert_called_once()
+    finished.assert_called_once()
 
 
 @pytest.mark.parametrize('remove', [[0], [1], [2], [1, 2]])

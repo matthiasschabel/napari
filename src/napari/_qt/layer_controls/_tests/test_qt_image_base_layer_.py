@@ -241,3 +241,34 @@ def test_custom_colormap(qtbot, layer):
     for widget in QApplication.topLevelWidgets():
         if isinstance(widget, QColorDialog):
             widget.close()
+
+
+@pytest.mark.parametrize('layer', [Image(_IMAGE), Surface(_SURF)])
+def test_replace_colormap_selector(qtbot, layer):
+    """A custom selector replaces and then restores the native controls."""
+    qtctrl = QtBaseImageControls(layer)
+    qtbot.addWidget(qtctrl)
+    control = qtctrl._colormap_control
+    selector = QPushButton('Catalog')
+
+    assert control.CUSTOM_COLORMAP_SELECTOR_VERSION == 1
+    control.set_colormap_selector(selector)
+    qtctrl.resize(500, qtctrl.height())
+    qtctrl.show()
+    QApplication.processEvents()
+    assert selector.parent() is control.colormapWidget
+    assert selector.isVisibleTo(control.colormapWidget)
+    assert (
+        selector.width()
+        >= control.colormapWidget.contentsRect().width() * 0.95
+    )
+    assert control.colorbar_label.isHidden()
+    assert control.colormap_combobox.isHidden()
+
+    layer.colormap = 'magma'
+    assert control.colormap_combobox.currentData() == 'magma'
+
+    control.set_colormap_selector(None)
+    assert selector.parent() is None
+    assert not control.colorbar_label.isHidden()
+    assert not control.colormap_combobox.isHidden()

@@ -3,9 +3,14 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-from vispy.scene.visuals import Compound, Image
+from vispy.scene.visuals import Compound
 from vispy.visuals import BaseVisual
 from vispy.visuals.transforms.linear import STTransform
+
+# napari's image visual, not vispy's: the tiles must classify NaN and the
+# infinities the same way an untiled image does, or the same data renders
+# differently once it crosses the texture size limit.
+from napari._vispy.visuals.image import Image
 
 # attributes that are passed from the tiled node to the child image nodes.
 PASS_THROUGH_ATTRIBUTES = {
@@ -105,6 +110,23 @@ class TiledImageNode(Compound):
             for ch, (_, dat) in zip(self.adopted_children, tiles, strict=True):
                 ch.set_data(dat)
         else:
+            # Pass-through attributes are forwarded to the children that exist
+            # at assignment time, and this branch replaces all of them. Without
+            # carrying the current values over, a reshape that changes the tile
+            # count silently resets the colormap, contrast limits, gamma, and
+            # interpolation to vispy's defaults.
+            # Read from a child, not from self. These names are forwarded to
+            # the children and never stored on the node, but `opacity` is also
+            # a real VisualNode property, so `getattr(self, 'opacity')` returns
+            # the node's own untouched default rather than what was assigned.
+            carried = (
+                {
+                    name: getattr(self.adopted_children[0], name)
+                    for name in PASS_THROUGH_ATTRIBUTES
+                }
+                if self.adopted_children
+                else {}
+            )
             for child in self.adopted_children:
                 child.parent = None
             self._subvisuals: list[BaseVisual] = []
@@ -121,6 +143,9 @@ class TiledImageNode(Compound):
             ):
                 ch.transform = STTransform(translate=offset + (0,))
                 self.add_subvisual(ch)
+            for name, value in carried.items():
+                if value is not None:
+                    setattr(self, name, value)
 
     def set_gl_state(self, *args: Any, **kwargs: Any) -> None:
         for child in self.adopted_children:

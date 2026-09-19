@@ -100,10 +100,10 @@ if TYPE_CHECKING:
     from magicgui.widgets import Widget
     from qtpy.QtGui import QHideEvent, QImage, QShowEvent
 
-    from napari._qt.widgets.qt_viewer_tour import GuidedTour
     from napari.viewer import Viewer
 
-_sentinel = object()
+# Keep defaults held by existing classes valid when interactive shells reload this module.
+_sentinel = globals().get('_sentinel', object())
 
 SHOW_QT_WARNING = QT5
 # a variable to check if we run with PyQt5 backend. As we dropped PySide it is enough to check Qt version
@@ -141,11 +141,10 @@ class _QtMainWindow(QMainWindow):
         self._ev = None
         self._window = window
         self._plugin_manager_dialog = None
-        self._qt_viewer: QtViewer = QtViewer(
+        self._qt_viewer = QtViewer(
             viewer, show_welcome_screen=show_welcome_screen
         )
         self._quit_app = False
-        self._viewer_tour: GuidedTour | None = None
 
         get_qapp().setWindowIcon(_svg_path_to_icon(self._get_window_icon()))
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
@@ -652,6 +651,12 @@ class _QtMainWindow(QMainWindow):
         event.accept()
 
     def _stop_worker_threads(self) -> None:
+        """Stop the worker threads owned by this window and wait for them.
+
+        Qt aborts the process when a running QThread is destroyed, so every
+        teardown path -- window close and interpreter shutdown alike -- has to
+        come through here before Qt deletes the window and its children.
+        """
         self.status_thread.close_terminate()
         self.status_thread.wait()
         self._qt_viewer.dims.stop()
@@ -686,9 +691,17 @@ class _QtMainWindow(QMainWindow):
 
 @atexit.register
 def _shutdown_open_windows() -> None:
-    """Stop worker threads for windows still open at interpreter shutdown."""
+    """Tear down windows still open when the interpreter finalizes.
+
+    Interpreter shutdown -- an IDE restarting its kernel, or a script ending
+    with a viewer still open -- delivers neither a close nor a hide event: the
+    Qt bindings simply delete the windows during their own cleanup. Any thread
+    a window still owns is then destroyed while running, which makes Qt abort
+    the process.
+    """
     for window in list(_QtMainWindow._instances):
-        # Qt may have deleted a window while leaving its Python wrapper alive.
+        # A window whose Qt object is already gone leaves a stale Python
+        # wrapper behind; skip it rather than let it block the live windows.
         with contextlib.suppress(RuntimeError):
             window._stop_worker_threads()
 
@@ -1140,7 +1153,7 @@ class Window:
         area: str | None = None,
         allowed_areas: Sequence[str] | None = None,
         shortcut=_sentinel,
-        add_vertical_stretch=False,
+        add_vertical_stretch=True,
         tabify: bool = False,
         menu: QMenu | None = None,
     ):

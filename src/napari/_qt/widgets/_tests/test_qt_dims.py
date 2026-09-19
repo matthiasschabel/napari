@@ -8,6 +8,8 @@ from qtpy.QtCore import Qt
 
 from napari._qt.widgets.qt_dims import QtDims
 from napari.components import Dims
+from napari.settings import get_settings
+from napari.settings._constants import PlaybackUnit
 
 
 def test_creating_view(qtbot):
@@ -361,6 +363,17 @@ def test_last_used_style_property_set_at_creation(qtbot):
     ] == [False, True, False, False]
 
 
+def test_frame_request_that_moves_nothing_keeps_playback_armed(qtbot):
+    dims = Dims(ndim=3, range=((0, 10, 1),) * 3)
+    view = QtDims(dims)
+    qtbot.addWidget(view)
+
+    dims._play_ready = True
+    view._set_frame(0, dims.current_step[0])
+
+    assert dims._play_ready
+
+
 @pytest.mark.skipif(
     os.environ.get('CI') and platform == 'win32',
     reason='not working in windows VM',
@@ -399,6 +412,10 @@ def test_play_button(qtbot, mock_qt_method_ctx, qt_dims):
     qtbot.waitUntil(qt_dims._animation_thread.isFinished)
 
 
+@pytest.mark.skipif(
+    os.environ.get('CI') and platform == 'win32',
+    reason='not working in windows VM',
+)
 def test_play_popup_stays_open_on_enter(qtbot, qt_dims):
     qt_dims.dims.ndim = 3
     qtbot.addWidget(qt_dims)
@@ -422,6 +439,74 @@ def test_play_popup_stays_open_on_enter(qtbot, qt_dims):
     assert button.popup.isVisible()
 
 
+def test_playback_cycle_time_unit(qtbot, qt_dims):
+    """The popup's unit selector converts between fps and seconds per cycle."""
+    qt_dims.dims.ndim = 3
+    qt_dims.dims.set_range(0, (0, 19, 1))  # 20 steps on the sliding axis
+    slider = qt_dims.slider_widgets[0]
+    button = slider.play_button
+
+    slider.fps = 10
+    assert not button.uses_cycle_time
+    assert button.fpsspin.value() == 10
+
+    # Switching units re-expresses the same speed: 20 steps / 10 fps = 2 s.
+    button.set_playback_unit(PlaybackUnit.SECONDS_PER_CYCLE)
+    assert button.uses_cycle_time
+    assert button.fpsspin.value() == 2
+    assert slider.fps == 10
+
+    # Editing the value in cycle mode sets fps = nsteps / seconds.
+    button.fpsspin.setValue(4)
+    button.fpsspin.editingFinished.emit()
+    assert slider.fps == 5
+
+    # A change in axis length keeps the cycle time and re-derives fps.
+    qt_dims.dims.set_range(0, (0, 39, 1))  # 40 steps
+    assert button.fpsspin.value() == 4
+    assert slider.fps == 10
+
+    # Direction applies on top of the converted rate.
+    button.reverse_check.setChecked(True)
+    assert slider.fps == -10
+    assert button.fpsspin.value() == 4
+
+    # Switching back re-expresses the speed as (unsigned) fps.
+    button.set_playback_unit(PlaybackUnit.FRAMES_PER_SECOND)
+    assert not button.uses_cycle_time
+    assert button.fpsspin.value() == 10
+    assert slider.fps == -10
+
+
+def test_playback_cycle_time_default_setting(qtbot):
+    """A cycle-time default derives per-axis fps and follows setting changes."""
+    settings = get_settings()
+    settings.application.playback_unit = PlaybackUnit.SECONDS_PER_CYCLE
+
+    dims = Dims(ndim=3)
+    dims.set_range(0, (0, 19, 1))  # 20 steps on the sliding axis
+    view = QtDims(dims)
+    qtbot.addWidget(view)
+    slider = view.slider_widgets[0]
+    button = slider.play_button
+
+    # The default 2 s per cycle over 20 steps starts the popup at 10 fps.
+    assert button.uses_cycle_time
+    assert button.fpsspin.value() == 2
+    assert slider.fps == 10
+
+    # Changing the default duration flows into cycle-mode popups.
+    settings.application.playback_cycle_seconds = 4
+    assert button.fpsspin.value() == 4
+    assert slider.fps == 5
+
+    # Switching the default unit back re-expresses the speed as fps.
+    settings.application.playback_unit = PlaybackUnit.FRAMES_PER_SECOND
+    assert not button.uses_cycle_time
+    assert button.fpsspin.value() == 5
+    assert slider.fps == 5
+
+
 def test_loop_mode_model_update_emits_once(qtbot):
     dims = Dims(ndim=3)
     view = QtDims(dims)
@@ -436,3 +521,161 @@ def test_loop_mode_model_update_emits_once(qtbot):
     assert slider.loop_mode == 'once'
     assert slider.play_button.mode_combo.currentText() == 'once'
     assert observed == ['once']
+
+
+def _nav_enabled(widget):
+    """Whether every control that moves this axis's slice is enabled.
+
+    Enablement is applied per child rather than to the whole row, so that the
+    padlock stays usable on an axis whose navigation controls are disabled.
+    """
+    children = (widget.slider, widget.play_button, widget.curslice_label)
+    states = {c.isEnabled() for c in children}
+    assert len(states) == 1, 'navigation controls disagree on enabled state'
+    return states.pop()
+
+
+def test_navigation_lock_disables_sliders(qtbot):
+    """While Dims navigation is locked, non-exempt navigation controls are disabled."""
+    dims = Dims(ndim=4, ndisplay=2)
+    dims.range = ((0, 4, 1),) * 4
+    view = QtDims(dims)
+    qtbot.addWidget(view)
+
+    assert all(_nav_enabled(w) for w in view.slider_widgets)
+
+    owner = object()
+    dims.lock_navigation(owner)  # lock all
+    assert all(not _nav_enabled(w) for w in view.slider_widgets)
+
+    dims.unlock_navigation(owner)
+    assert all(_nav_enabled(w) for w in view.slider_widgets)
+
+    dims.lock_navigation(owner, exempt=(0,))  # axis 0 stays navigable
+    enabled = {w.axis: _nav_enabled(w) for w in view.slider_widgets}
+    assert enabled[0] is True
+    assert all(not enabled[a] for a in (1, 2, 3))
+
+
+def _lock_dims_view(qtbot):
+    dims = Dims(ndim=4, ndisplay=2)
+    dims.range = ((0, 4, 1),) * 4
+    view = QtDims(dims)
+    qtbot.addWidget(view)
+    return dims, view
+
+
+def _widget_for(view, axis):
+    return next(w for w in view.slider_widgets if w.axis == axis)
+
+
+def test_padlock_toggles_axis_lock(qtbot):
+    """Clicking the padlock toggles that axis's persistent lock."""
+    dims, view = _lock_dims_view(qtbot)
+    widget = _widget_for(view, 1)
+
+    assert dims.axis_locked[1] is False
+    widget.lock_button.click()
+    assert dims.axis_locked[1] is True
+    # ...and the axis's navigation controls disable, while the padlock stays live
+    assert _nav_enabled(widget) is False
+    assert widget.lock_button.isEnabled() is True
+
+    widget.lock_button.click()
+    assert dims.axis_locked[1] is False
+    assert _nav_enabled(widget) is True
+
+
+def test_padlock_reflects_programmatic_lock(qtbot):
+    """A lock set through the model updates the padlock without a click."""
+    dims, view = _lock_dims_view(qtbot)
+    widget = _widget_for(view, 2)
+
+    dims.lock_axis(2)
+    assert widget.lock_button.property('locked') is True
+    assert _nav_enabled(widget) is False
+
+    dims.unlock_axis(2)
+    assert widget.lock_button.property('locked') is False
+    assert _nav_enabled(widget) is True
+
+
+def test_padlock_only_affects_its_own_axis(qtbot):
+    dims, view = _lock_dims_view(qtbot)
+    _widget_for(view, 0).lock_button.click()
+    assert dims.axis_locked == (True, False, False, False)
+    assert _nav_enabled(_widget_for(view, 0)) is False
+    assert all(_nav_enabled(_widget_for(view, a)) for a in (1, 2, 3))
+
+
+def test_padlock_inert_when_not_interactive(qtbot):
+    """axis_lock_interactive=False leaves the padlock as a status indicator."""
+    dims, view = _lock_dims_view(qtbot)
+    dims.axis_lock_interactive = False
+    widget = _widget_for(view, 1)
+
+    assert widget.lock_button.isEnabled() is False
+
+    # A programmatic lock still applies and still shows on the padlock.
+    dims.lock_axis(1)
+    assert widget.lock_button.property('locked') is True
+    assert _nav_enabled(widget) is False
+
+    dims.axis_lock_interactive = True
+    assert widget.lock_button.isEnabled() is True
+
+
+def test_padlock_disabled_during_owner_lock(qtbot):
+    """An owner lock freezes the per-axis configuration, so padlocks go inert."""
+    dims, view = _lock_dims_view(qtbot)
+    owner = object()
+
+    dims.lock_navigation(owner, exempt=(0,))
+    assert all(not w.lock_button.isEnabled() for w in view.slider_widgets)
+
+    dims.unlock_navigation(owner)
+    assert all(w.lock_button.isEnabled() for w in view.slider_widgets)
+
+
+def test_padlock_survives_ndim_change(qtbot):
+    """Sliders are rebuilt on ndim change; the padlock must re-sync to the model."""
+    dims, view = _lock_dims_view(qtbot)
+    dims.lock_axis(3)
+    dims.ndim = 5  # new axis prepended, lock tracks its axis to index 4
+    assert dims.axis_locked == (False, False, False, False, True)
+    assert _widget_for(view, 4).lock_button.property('locked') is True
+    assert _nav_enabled(_widget_for(view, 4)) is False
+
+
+def test_padlock_stops_active_playback(qt_dims, qtbot):
+    """Locking the axis being played must stop playback, not strand it.
+
+    The play button disables with the axis's other navigation controls, so if the
+    animation thread kept running the user would have no way to stop it. Worse,
+    a blocked ``set_current_step`` emits nothing, so the canvas never draws and
+    ``Dims._play_ready`` is never restored -- playback would hang unrecoverably.
+    """
+    dims = qt_dims.dims
+    dims.ndim = 4
+    dims.range = ((0, 4, 1),) * 4
+    widget = _widget_for(qt_dims, 0)
+
+    qt_dims.play(0, fps=20)
+    qtbot.waitUntil(lambda: qt_dims.is_playing, timeout=2000)
+
+    widget.lock_button.click()
+    assert dims.axis_locked[0] is True
+    qtbot.waitUntil(lambda: not qt_dims.is_playing, timeout=2000)
+
+
+def test_owner_lock_stops_active_playback(qt_dims, qtbot):
+    """An owner lock (e.g. a draw starting) must stop playback for the same reason."""
+    dims = qt_dims.dims
+    dims.ndim = 4
+    dims.range = ((0, 4, 1),) * 4
+
+    qt_dims.play(0, fps=20)
+    qtbot.waitUntil(lambda: qt_dims.is_playing, timeout=2000)
+
+    dims.lock_navigation(object())  # axis 0 not exempt
+    qtbot.waitUntil(lambda: not qt_dims.is_playing, timeout=2000)

@@ -31,6 +31,10 @@ _sentinel = object()
 
 _SHORTCUT_DEPRECATION_STRING = f'The shortcut parameter is deprecated since version 0.4.8, please use the action and shortcut manager APIs. The new action manager and shortcut API allow user configuration and localisation. (got {"{shortcut}"})'
 
+# Floor the dock keeps on itself; the contained widget's minimum is added on
+# top of this by the layout (see ``event``).
+_MIN_DOCK_SIZE = 50
+
 dock_area_to_str = {
     Qt.DockWidgetArea.LeftDockWidgetArea: 'left',
     Qt.DockWidgetArea.RightDockWidgetArea: 'right',
@@ -80,7 +84,7 @@ class QtViewerDockWidget(QDockWidget):
         allowed_areas: list[str] | None = None,
         shortcut=_sentinel,
         object_name: str = '',
-        add_vertical_stretch=False,
+        add_vertical_stretch=True,
         close_btn=True,
     ) -> None:
         self._ref_qt_viewer: ReferenceType[QtViewer] = ref(qt_viewer)
@@ -121,17 +125,12 @@ class QtViewerDockWidget(QDockWidget):
         else:
             allowed_areas = Qt.DockWidgetArea.AllDockWidgetAreas
         self.setAllowedAreas(allowed_areas)
-        self.setMinimumHeight(50)
-        self.setMinimumWidth(50)
+        self.setMinimumSize(_MIN_DOCK_SIZE, _MIN_DOCK_SIZE)
         # FIXME:
         self.setObjectName(object_name or name)
 
         is_vertical = area in {'left', 'right'}
         widget_ = combine_widgets(widget, vertical=is_vertical)
-        widget_.setSizePolicy(
-            QSizePolicy.Policy.Preferred,
-            QSizePolicy.Policy.Maximum,
-        )
         self.setWidget(widget_)
         if is_vertical and add_vertical_stretch:
             self._maybe_add_vertical_stretch(widget_)
@@ -243,6 +242,15 @@ class QtViewerDockWidget(QDockWidget):
     def setFeatures(self, features):
         super().setFeatures(features)
         self._features = self.features()
+
+    def event(self, event):
+        if event.type() == QEvent.Type.LayoutRequest:
+            # QDockWidgetLayout folds the dock's current minimumSize into its
+            # own minimum, and its SetMinAndMaxSize constraint writes that back
+            # on every activation, so the minimum can only ever grow. Reset the
+            # explicit floor first so it is recomputed from the content.
+            self.setMinimumSize(_MIN_DOCK_SIZE, _MIN_DOCK_SIZE)
+        return super().event(event)
 
     def keyPressEvent(self, event):
         # if you subclass QtViewerDockWidget and override the keyPressEvent

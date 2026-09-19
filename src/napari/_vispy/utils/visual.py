@@ -17,6 +17,9 @@ from napari._vispy.overlays.bounding_box import VispyBoundingBoxOverlay
 from napari._vispy.overlays.brush_circle import VispyBrushCircleOverlay
 from napari._vispy.overlays.canvas_axes import VispyCanvasAxesOverlay
 from napari._vispy.overlays.colorbar import VispyColorBarOverlay
+from napari._vispy.overlays.direction_labels import (
+    VispyDirectionLabelsOverlay,
+)
 from napari._vispy.overlays.interaction_box import (
     VispySelectionBoxOverlay,
     VispyTransformBoxOverlay,
@@ -41,6 +44,7 @@ from napari.components.overlays import (
     CanvasAxesOverlay,
     ColorBarOverlay,
     CurrentSliceOverlay,
+    DirectionLabelsOverlay,
     LabelsBrushStrokeOverlay,
     LabelsPolygonOverlay,
     LayerNameOverlay,
@@ -86,6 +90,7 @@ overlay_to_visual: dict[type[Overlay], type[VispyBaseOverlay]] = {
     SceneLineOverlay: VispySceneLineOverlay,
     SceneMeshOverlay: VispySceneMeshOverlay,
     CanvasAxesOverlay: VispyCanvasAxesOverlay,
+    DirectionLabelsOverlay: VispyDirectionLabelsOverlay,
     BoundingBoxOverlay: VispyBoundingBoxOverlay,
     TransformBoxOverlay: VispyTransformBoxOverlay,
     SelectionBoxOverlay: VispySelectionBoxOverlay,

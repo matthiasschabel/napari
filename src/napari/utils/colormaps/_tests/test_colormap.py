@@ -2,7 +2,7 @@ import copy
 import importlib
 from collections import defaultdict
 from itertools import product
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 import numpy.testing as npt
@@ -602,3 +602,124 @@ def test_normalize_label_colormap(colormap_like):
     else:
         with pytest.raises(ValueError, match='Unable to interpret'):
             _normalize_label_colormap(colormap_like)
+
+
+# --- infinity colors ------------------------------------------------------
+
+NON_FINITE_VALUES = np.array(
+    [-np.inf, -0.5, 0.0, 0.5, 1.0, 1.5, np.inf, np.nan]
+)
+
+BLACK_WHITE = np.array([[0, 0, 0, 1], [1, 1, 1, 1]], dtype=float)
+
+RED = [1, 0, 0, 1]
+GREEN = [0, 1, 0, 1]
+BLUE = [0, 0, 1, 1]
+YELLOW = [1, 1, 0, 1]
+MAGENTA = [1, 0, 1, 1]
+
+
+def _cmap(interpolation, **kwargs):
+    if interpolation == 'zero':
+        kwargs.setdefault('controls', [0, 0.5, 1])
+    return Colormap(
+        BLACK_WHITE, name='testing', interpolation=interpolation, **kwargs
+    )
+
+
+@pytest.mark.parametrize('interpolation', ['linear', 'zero'])
+def test_non_finite_mapping_unchanged_without_inf_colors(interpolation):
+    """Colormaps that do not set the infinity colors map exactly as before.
+
+    The expected arrays are the outputs of napari 0.7 (pre-``pos_inf_color``),
+    so an accidental behavior change for existing colormaps fails here.
+    """
+    mid = [0.5, 0.5, 0.5, 1] if interpolation == 'linear' else [1, 1, 1, 1]
+
+    plain = _cmap(interpolation).map(NON_FINITE_VALUES)
+    npt.assert_allclose(
+        plain,
+        [
+            [0, 0, 0, 1],  # -inf -> first ramp color
+            [0, 0, 0, 1],
+            [0, 0, 0, 1],
+            mid,
+            [1, 1, 1, 1],
+            [1, 1, 1, 1],
+            [1, 1, 1, 1],  # +inf -> last ramp color
+            [0, 0, 0, 0],  # nan -> transparent
+        ],
+    )
+
+    with_extremes = _cmap(
+        interpolation, high_color=GREEN, low_color=BLUE, nan_color=RED
+    ).map(NON_FINITE_VALUES)
+    npt.assert_allclose(
+        with_extremes,
+        [BLUE, BLUE, BLUE, mid, GREEN, GREEN, GREEN, RED],
+    )
+
+
+@pytest.mark.parametrize('interpolation', ['linear', 'zero'])
+def test_inf_colors_override_high_and_low(interpolation):
+    """+/-inf take the infinity colors; finite out-of-range values do not."""
+    cmap = _cmap(
+        interpolation,
+        high_color=GREEN,
+        low_color=BLUE,
+        nan_color=RED,
+        pos_inf_color=YELLOW,
+        neg_inf_color=MAGENTA,
+    )
+    mid = [0.5, 0.5, 0.5, 1] if interpolation == 'linear' else [1, 1, 1, 1]
+    npt.assert_allclose(
+        cmap.map(NON_FINITE_VALUES),
+        [
+            MAGENTA,  # -inf
+            BLUE,  # finite under-range keeps low_color
+            BLUE,
+            mid,
+            GREEN,
+            GREEN,  # finite over-range keeps high_color
+            YELLOW,  # +inf
+            RED,  # nan untouched by the infinity colors
+        ],
+    )
+
+
+@pytest.mark.parametrize('interpolation', ['linear', 'zero'])
+def test_inf_colors_fall_back_when_unset(interpolation):
+    """An unset infinity color leaves that infinity on its previous route."""
+    cmap = _cmap(interpolation, high_color=GREEN, neg_inf_color=MAGENTA)
+    mapped = cmap.map(np.array([-np.inf, np.inf]))
+    npt.assert_allclose(mapped, [MAGENTA, GREEN])
+
+    ramp_only = _cmap(interpolation, pos_inf_color=YELLOW)
+    npt.assert_allclose(
+        ramp_only.map(np.array([-np.inf, np.inf])), [[0, 0, 0, 1], YELLOW]
+    )
+
+
+def test_inf_colors_default_to_none():
+    cmap = Colormap(BLACK_WHITE, name='testing')
+    assert cmap.pos_inf_color is None
+    assert cmap.neg_inf_color is None
+
+
+@pytest.mark.parametrize('field', ['pos_inf_color', 'neg_inf_color'])
+def test_same_colors_distinguishes_inf_colors(field):
+    """Registry deduplication must not merge maps differing only here."""
+    base = Colormap(BLACK_WHITE, name='testing')
+    other = Colormap(BLACK_WHITE, name='testing', **{field: YELLOW})
+    assert not base.same_colors(other)
+    assert not other.same_colors(base)
+    assert base.same_colors(Colormap(BLACK_WHITE, name='testing'))
+
+
+@pytest.mark.parametrize('field', ['pos_inf_color', 'neg_inf_color'])
+def test_setting_inf_color_emits_event(field):
+    cmap = Colormap(BLACK_WHITE, name='testing')
+    mock = Mock()
+    getattr(cmap.events, field).connect(mock)
+    setattr(cmap, field, YELLOW)
+    mock.assert_called_once()

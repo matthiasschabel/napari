@@ -4,6 +4,12 @@ from enum import Enum
 
 from qtpy.QtCore import QPoint, QSize, Qt
 from qtpy.QtGui import QCursor, QPainter, QPen, QPixmap
+from qtpy.QtSvg import QSvgRenderer
+
+from napari.resources._icons import CURSOR_PATH
+
+_MODE_CURSOR_SIZE = 32
+_MODE_CURSOR_HOTSPOT = (2, 2)
 
 
 def crosshair_pixmap():
@@ -103,9 +109,30 @@ def create_blank_cursor():
     return QCursor(Qt.CursorShape.BlankCursor)
 
 
+def _create_mode_cursor(icon_name: str, device_pixel_ratio: float) -> QCursor:
+    pixel_size = round(_MODE_CURSOR_SIZE * device_pixel_ratio)
+    pixmap = QPixmap(QSize(pixel_size, pixel_size))
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    QSvgRenderer(str(CURSOR_PATH / f'{icon_name}.svg')).render(painter)
+    painter.end()
+    pixmap.setDevicePixelRatio(device_pixel_ratio)
+    return QCursor(pixmap, *_MODE_CURSOR_HOTSPOT)
+
+
+def create_add_cursor(device_pixel_ratio: float) -> QCursor:
+    return _create_mode_cursor('cursor_add', device_pixel_ratio)
+
+
+def create_remove_cursor(device_pixel_ratio: float) -> QCursor:
+    return _create_mode_cursor('cursor_remove', device_pixel_ratio)
+
+
 class QtCursorVisual(Enum):
     blank = staticmethod(create_blank_cursor)
     square = staticmethod(create_square_cursor)
+    add = staticmethod(create_add_cursor)
+    remove = staticmethod(create_remove_cursor)
     cross = Qt.CursorShape.CrossCursor
     forbidden = Qt.CursorShape.ForbiddenCursor
     pointing = Qt.CursorShape.PointingHandCursor

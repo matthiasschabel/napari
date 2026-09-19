@@ -1,4 +1,5 @@
 from itertools import permutations
+from unittest.mock import Mock
 
 import numpy as np
 import numpy.testing as npt
@@ -346,3 +347,20 @@ def test_changing_data_dimensionality_updates_units_scale():
     # Changing back to 2D should also work
     image.data = np.zeros((10, 10))
     assert len(vispy_image._world_to_layer_units_scale) == image.ndim
+
+
+def test_slice_change_reuses_unchanged_transform(monkeypatch):
+    image = Image(np.zeros((3, 10, 10)), scale=(1, 2, 4))
+    vispy_image = VispyImageLayer(image, font_info=FontInfo())
+    matrix = vispy_image.node.transform.matrix.copy()
+    matrix_change = Mock(wraps=vispy_image._on_matrix_change)
+    monkeypatch.setattr(vispy_image, '_on_matrix_change', matrix_change)
+
+    image._slice_dims(Dims(ndim=3, point=(1, 0, 0)))
+
+    matrix_change.assert_not_called()
+    npt.assert_array_equal(vispy_image.node.transform.matrix, matrix)
+
+    image._slice_dims(Dims(ndim=3, order=(0, 2, 1)))
+    matrix_change.assert_called_once()
+    assert not np.array_equal(vispy_image.node.transform.matrix, matrix)

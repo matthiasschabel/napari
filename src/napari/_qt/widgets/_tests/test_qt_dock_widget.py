@@ -128,9 +128,7 @@ def test_adding_stretch(make_napari_viewer):
     widg.setLayout(QVBoxLayout())
     widg.layout().addWidget(QPushButton())
     assert widg.layout().count() == 1
-    dw = viewer.window.add_dock_widget(
-        widg, area='right', add_vertical_stretch=True
-    )
+    dw = viewer.window.add_dock_widget(widg, area='right')
     assert widg.layout().count() == 2
     dw.close()
 
@@ -139,9 +137,7 @@ def test_adding_stretch(make_napari_viewer):
     widg.setLayout(QVBoxLayout())
     widg.layout().addWidget(QTextEdit())
     assert widg.layout().count() == 1
-    dw = viewer.window.add_dock_widget(
-        widg, area='right', add_vertical_stretch=True
-    )
+    dw = viewer.window.add_dock_widget(widg, area='right')
     assert widg.layout().count() == 1
     dw.close()
 
@@ -150,9 +146,7 @@ def test_adding_stretch(make_napari_viewer):
     widg.setLayout(QHBoxLayout())
     widg.layout().addWidget(QPushButton())
     assert widg.layout().count() == 1
-    dw = viewer.window.add_dock_widget(
-        widg, area='bottom', add_vertical_stretch=True
-    )
+    dw = viewer.window.add_dock_widget(widg, area='bottom')
     assert widg.layout().count() == 1
     dw.close()
 
@@ -256,3 +250,24 @@ def test_combine_widgets_error():
         TypeError, match='"widgets" must be a QWidget, a magicgui'
     ):
         combine_widgets(['string'])
+
+
+def test_dock_minimum_shrinks_with_content(make_napari_viewer, qtbot):
+    """Hiding part of a docked widget must lower the dock's minimum again."""
+    viewer = make_napari_viewer(show=True)
+    widg = QWidget()
+    widg.setLayout(QVBoxLayout())
+    widg.layout().addWidget(QPushButton())
+    tall = QTextEdit()
+    tall.setMinimumHeight(300)
+    tall.hide()
+    widg.layout().addWidget(tall)
+    dw = viewer.window.add_dock_widget(widg, name='test', area='right')
+    qtbot.waitUntil(lambda: dw.minimumSizeHint().height() > 0)
+    base = dw.minimumSizeHint().height()
+
+    tall.show()
+    qtbot.waitUntil(lambda: dw.minimumSizeHint().height() >= base + 300)
+
+    tall.hide()
+    qtbot.waitUntil(lambda: dw.minimumSizeHint().height() == base)

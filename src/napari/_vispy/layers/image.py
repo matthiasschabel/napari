@@ -184,7 +184,17 @@ class VispyImageLayer(VispyScalarFieldBaseLayer):
         self._on_iso_threshold_change()
 
     def _on_colormap_change(self, event=None) -> None:
-        self.node.cmap = _napari_cmap_to_vispy(self.layer.colormap)
+        # Name the nodes that emit class sentinels rather than the ones that
+        # do not: ImageLayerNode can be handed an arbitrary custom node, and a
+        # node that neither produces sentinels nor constrains its colormap
+        # input must not decode them. Failing closed keeps an unknown node on
+        # the ordinary colormap.
+        self.node.cmap = _napari_cmap_to_vispy(
+            self.layer.colormap,
+            decode_sentinels=isinstance(
+                self.node, (ImageNode, TiledImageNode)
+            ),
+        )
 
     def _update_mip_minip_cutoff(self) -> None:
         # discard fragments beyond contrast limits, but only with translucent blending
@@ -201,7 +211,7 @@ class VispyImageLayer(VispyScalarFieldBaseLayer):
 
     def _on_contrast_limits_change(self) -> None:
         self.node.clim = _coerce_contrast_limits(
-            self.layer.contrast_limits
+            self.layer.contrast_limits  # pyrefly: ignore [bad-argument-type]
         ).contrast_limits
         # cutoffs must be updated after clims, so we can set them to the new values
         self._update_mip_minip_cutoff()
@@ -221,8 +231,8 @@ class VispyImageLayer(VispyScalarFieldBaseLayer):
         if isinstance(self.node, VolumeNode):
             if self.node._texture.is_normalized:
                 cmin, cmax = self.layer.contrast_limits_range
-                self.node.threshold = (self.layer.iso_threshold - cmin) / (
-                    cmax - cmin
+                self.node.threshold = (self.layer.iso_threshold - cmin) / (  # pyrefly: ignore [unsupported-operation]
+                    cmax - cmin  # pyrefly: ignore [unsupported-operation]
                 )
             else:
                 self.node.threshold = self.layer.iso_threshold

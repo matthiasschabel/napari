@@ -56,6 +56,83 @@ def test_adding_to_shape_list():
     assert shape_list.shapes[0] == shape
 
 
+def test_staged_shape_materializes_aggregate_geometry_once():
+    shape_list = ShapeList([Rectangle([[0, 0], [2, 2]])])
+    staged = Rectangle([[5, 5], [8, 8]], z_index=1)
+    aggregate_sizes = (
+        len(shape_list._vertices),
+        len(shape_list._mesh.vertices),
+        len(shape_list._mesh.triangles),
+    )
+
+    index = shape_list.add_staged(
+        staged,
+        face_color=np.array([1, 0, 0, 1]),
+        edge_color=np.array([0, 1, 0, 1]),
+    )
+
+    assert index == 1
+    assert shape_list.data[index] is staged.data
+    assert shape_list.staged_index == index
+    assert np.diff(shape_list._vertices_index)[index] == 0
+    assert np.diff(shape_list._mesh.vertices_index)[index] == 0
+    assert np.diff(shape_list._mesh.triangles_index)[index] == 0
+    assert aggregate_sizes == (
+        len(shape_list._vertices),
+        len(shape_list._mesh.vertices),
+        len(shape_list._mesh.triangles),
+    )
+
+    with pytest.raises(RuntimeError, match='use the staged-shape operation'):
+        shape_list.shift(index, [1, 1])
+
+    shape_list.shift_staged(index, [1, 1])
+    assert aggregate_sizes == (
+        len(shape_list._vertices),
+        len(shape_list._mesh.vertices),
+        len(shape_list._mesh.triangles),
+    )
+
+    shape_list.commit_staged(index)
+
+    assert shape_list.staged_index is None
+    assert np.diff(shape_list._vertices_index)[index] == len(
+        staged.data_displayed
+    )
+    assert np.diff(shape_list._mesh.vertices_index)[index] == (
+        staged.vertices_count
+    )
+    assert np.diff(shape_list._mesh.triangles_index)[index] == (
+        staged.triangles_count
+    )
+
+
+def test_remove_staged_shape_leaves_aggregate_geometry_unchanged():
+    shape_list = ShapeList([Rectangle([[0, 0], [2, 2]])])
+    aggregate_arrays = (
+        shape_list._vertices.copy(),
+        shape_list._mesh.vertices.copy(),
+        shape_list._mesh.triangles.copy(),
+    )
+    index = shape_list.add_staged(
+        Rectangle([[5, 5], [8, 8]], z_index=1),
+        face_color=np.ones(4),
+        edge_color=np.ones(4),
+    )
+
+    shape_list.remove_staged(index)
+
+    assert shape_list.staged_index is None
+    assert len(shape_list.shapes) == 1
+    np.testing.assert_array_equal(shape_list._vertices, aggregate_arrays[0])
+    np.testing.assert_array_equal(
+        shape_list._mesh.vertices, aggregate_arrays[1]
+    )
+    np.testing.assert_array_equal(
+        shape_list._mesh.triangles, aggregate_arrays[2]
+    )
+
+
 def test_reset_bounding_box_rotation():
     """Test if rotating shape resets bounding box."""
     shape = Rectangle(np.array([[0, 0], [10, 10]]))
@@ -205,6 +282,46 @@ def test_inside():
     shape_list.add([shape1, shape2, shape3])
     shape_list.slice_key = (1,)
     assert shape_list.inside((0.5, 0.5)) == 1
+
+
+@pytest.mark.parametrize(
+    ('slice_key', 'expected'),
+    [
+        ((0.9,), 1),  # within half a slice of shape2: drawn, so pickable
+        ((0.5,), None),  # half way between shape1 and shape2: neither is drawn
+        ((1.5,), None),
+    ],
+)
+def test_inside_with_fractional_slice_key(slice_key, expected):
+    """A planar shape is pickable exactly when `_update_displayed` draws it."""
+    shape_list = ShapeList()
+    shape_list.add(
+        [
+            Polygon(np.array([[0, 0, 0], [0, 1, 0], [0, 1, 1], [0, 0, 1]])),
+            Polygon(np.array([[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]])),
+        ]
+    )
+    shape_list.slice_key = slice_key
+
+    npt.assert_array_equal(
+        shape_list._visible_shapes_indices,
+        np.flatnonzero(shape_list._displayed),
+    )
+    assert shape_list.inside((0.5, 0.5)) == expected
+
+
+def test_visible_shapes_spanning_slices_are_not_widened():
+    """A spanning shape covers its own slices, not half of the next one."""
+    shape_list = ShapeList()
+    shape_list.add(
+        Polygon(np.array([[0, 0, 0], [0, 1, 0], [1, 1, 1], [1, 0, 1]]))
+    )
+
+    shape_list.slice_key = (-0.4,)
+    assert shape_list._visible_shapes == []
+
+    shape_list.slice_key = (1,)
+    assert len(shape_list._visible_shapes) == 1
 
 
 def test_visible_shapes_4d():

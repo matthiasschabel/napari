@@ -83,7 +83,7 @@ class ColormapDict(UserDict[str, Colormap]):
     Prevent overriding of existing keys.
     """
 
-    def __setitem__(self, key: str, value: Colormap) -> None:
+    def __setitem__(self, key: str, value: Colormap) -> None:  # pyrefly: ignore [bad-override-param-name]
         if key in self:
             raise KeyError(f"Colormap with name '{key}' already exists")
         super().__setitem__(key, value)
@@ -265,12 +265,86 @@ def convert_vispy_colormap(colormap, name='vispy'):
     )
 
 
-def _napari_cmap_to_vispy(colormap: Colormap) -> VispyColormap:
-    """Convert a napari colormap to its equivalent vispy colormap."""
+# Sentinel values the image shader returns from apply_clim to name a value's
+# class. Normalized data is in [0, 1], so anything below SENTINEL_CUTOFF is
+# unambiguously a class marker rather than an intensity. The shader half lives
+# in napari._vispy.visuals.image; both sides must agree, which is why the
+# constants are here, in the module both can import.
+SENTINEL_CUTOFF = -0.5
+NAN_SENTINEL = -1.0
+POS_INF_SENTINEL = -2.0
+NEG_INF_SENTINEL = -3.0
+
+
+def _resolve_exceptional_colors(colormap: Colormap) -> np.ndarray:
+    """Resolve each exceptional class to a concrete RGBA, fallbacks applied.
+
+    Delegates to the CPU mapping instead of restating the fallback order.
+    `Colormap.map` already sends +inf through pos_inf_color, then high_color,
+    then the ramp end it would have reached anyway, and -inf through the
+    mirror of that; asking it here means the shader cannot disagree with the
+    thumbnails and the CPU path about what a class should look like.
+
+    Returns three RGBA rows: NaN, +inf, -inf.
+    """
+    return colormap.map(np.array([np.nan, np.inf, -np.inf]))
+
+
+class _ExceptionalVispyColormap(VispyColormap):
+    """A vispy colormap that decodes the image shader's class sentinels.
+
+    vispy already injects bad, low, and high checks at the top of `glsl_map`.
+    Ours has to run before all of them, because a sentinel is negative and
+    would otherwise be swallowed by the low check. Injecting after
+    `super().__init__` puts it first: each injection prepends at the function
+    opening, so the last one applied ends up outermost.
+    """
+
+    def __init__(self, *args, exceptional_colors=None, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        if exceptional_colors is None:
+            return
+        nan, pos_inf, neg_inf = exceptional_colors
+
+        def vec4(c) -> str:
+            return 'vec4({:.6f}, {:.6f}, {:.6f}, {:.6f})'.format(*c)
+
+        prologue = f"""
+        // napari: exceptional-value classes, ahead of every other check
+        if (t < {NEG_INF_SENTINEL + 0.5}) {{ return {vec4(neg_inf)}; }}
+        if (t < {POS_INF_SENTINEL + 0.5}) {{ return {vec4(pos_inf)}; }}
+        if (t < {SENTINEL_CUTOFF}) {{ return {vec4(nan)}; }}"""
+        self.glsl_map = re.sub(
+            r'float t\) \{', f'float t) {{{prologue}', self.glsl_map
+        )
+
+
+def _napari_cmap_to_vispy(
+    colormap: Colormap, *, decode_sentinels: bool = False
+) -> VispyColormap:
+    """Convert a napari colormap to its equivalent vispy colormap.
+
+    `decode_sentinels` must be set only for a visual whose shader actually
+    emits the class sentinels, which today means napari's image visual. It is
+    off by default because the sentinel range is not otherwise unreachable:
+    vispy's mesh visual feeds the colormap an *unclamped* `(val - cmin) /
+    (cmax - cmin)` (vispy/visuals/mesh.py), so a surface vertex below the
+    contrast limits arrives as a large negative t. Decoding those as classes
+    would paint legitimate under-range data with nan_color or an infinity
+    color, on default colormaps as much as on configured ones.
+    """
     cmap_args = colormap.model_dump()
     cmap_args.pop('name')
+    # vispy's Colormap takes no infinity colors. They reach the shader through
+    # the sentinel prologue instead, with their fallbacks already resolved.
+    cmap_args.pop('pos_inf_color', None)
+    cmap_args.pop('neg_inf_color', None)
     cmap_args['bad_color'] = cmap_args.pop('nan_color')
-    return VispyColormap(**cmap_args)
+    if not decode_sentinels:
+        return VispyColormap(**cmap_args)
+    return _ExceptionalVispyColormap(
+        **cmap_args, exceptional_colors=_resolve_exceptional_colors(colormap)
+    )
 
 
 def _validate_rgb(colors, *, tolerance=0.0):
@@ -499,7 +573,7 @@ def label_colormap(
         display_name='low discrepancy colors',
         colors=colors,
         controls=np.linspace(0, 1, len(colors) + 1),
-        interpolation='zero',
+        interpolation='zero',  # pyrefly: ignore [bad-argument-type]
         background_value=background_value,
         seed=seed,
     )
@@ -586,7 +660,7 @@ def shuffle_and_extend_colormap(
         name=colormap.name,
         colors=extended_colors,
         controls=np.linspace(0, 1, len(extended_colors) + 1),
-        interpolation='zero',
+        interpolation='zero',  # pyrefly: ignore [bad-argument-type]
         background_value=colormap.background_value,
     )
     return new_colormap

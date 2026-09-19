@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from weakref import ref
 
 import numpy as np
-from qtpy.QtCore import QObject, Qt, QThread, Signal, Slot
+from qtpy.QtCore import QObject, Qt, QThread, QTimer, Signal, Slot
 from qtpy.QtGui import QIntValidator
 from qtpy.QtWidgets import (
     QApplication,
@@ -28,8 +28,9 @@ from napari._qt.widgets.qt_mirrored_sliders_popup import QMirroredSlidersPopup
 from napari._qt.widgets.qt_scrollbar import ModifiedScrollBar
 from napari.components import Dims
 from napari.settings import get_settings
-from napari.settings._constants import LoopMode
-from napari.utils.events.event_utils import connect_setattr_value
+from napari.settings._constants import LoopMode, PlaybackUnit
+from napari.utils.events.event_utils import connect_no_arg
+from napari.utils.translations import trans
 
 if TYPE_CHECKING:
     from qtpy.QtGui import QResizeEvent
@@ -40,6 +41,14 @@ if TYPE_CHECKING:
 # Width companion to QtDims.SLIDERHEIGHT: keeps a narrow window from collapsing
 # the groove until the handle covers it and dragging becomes impossible.
 SLIDER_MINIMUM_WIDTH = 150
+
+# How long the padlock stays tinted amber after a blocked navigation attempt.
+LOCK_FLASH_MS = 300
+
+# Playback-speed spinbox bound per unit; a day per cycle is effectively
+# unbounded.
+PLAYBACK_FPS_MAX = 500
+PLAYBACK_CYCLE_SECONDS_MAX = 86400
 
 
 class _ModifiedScrollBar(ModifiedScrollBar):
@@ -100,23 +109,19 @@ class QtDimSliderWidget(QWidget):
 
         settings = get_settings()
         self._fps = settings.application.playback_fps
-        connect_setattr_value(
-            settings.application.events.playback_fps, self, 'fps'
-        )
 
         self._minframe = 0
         self._maxframe = 0
         self._loop_mode = settings.application.playback_mode
-        connect_setattr_value(
-            settings.application.events.playback_mode, self, 'loop_mode'
-        )
 
         layout = QHBoxLayout()
         self.axis_label = self._create_axis_label_widget()
         self.slider = self._create_range_slider_widget()
         self.play_button = self._create_play_button_widget()
+        self.lock_button = self._create_lock_button_widget()
 
         layout.addWidget(self.axis_label)
+        layout.addWidget(self.lock_button)
         layout.addWidget(self.play_button)
         layout.addWidget(self.slider, stretch=2)
         layout.addWidget(self.curslice_label)
@@ -127,6 +132,86 @@ class QtDimSliderWidget(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         self.setLayout(layout)
         self.dims.events.axis_labels.connect(self._pull_label)
+
+        # Apply the default playback-speed unit and keep following it; in
+        # cycle-time mode each axis derives its own fps from the shared
+        # default duration.
+        self._sync_playback_unit_from_settings()
+        connect_no_arg(
+            settings.application.events.playback_unit,
+            self,
+            '_sync_playback_unit_from_settings',
+        )
+        connect_no_arg(
+            settings.application.events.playback_cycle_seconds,
+            self,
+            '_sync_cycle_seconds_from_settings',
+        )
+
+        # One reusable single-shot timer per row drives the lock-flash: poking a
+        # locked control again restarts it rather than stacking animations.
+        self._lock_flash_timer = QTimer(self)
+        self._lock_flash_timer.setSingleShot(True)
+        self._lock_flash_timer.setInterval(LOCK_FLASH_MS)
+        self._lock_flash_timer.timeout.connect(self._end_lock_flash)
+
+        self._update_lock_state()
+
+    def mousePressEvent(self, event) -> None:
+        """Flash the padlock when the user pokes a frozen navigation control.
+
+        The slider and play button are *disabled* while the axis is locked, and
+        a disabled child does not consume mouse events — Qt propagates them up
+        to this row (pinned by ``test_disabled_child_click_reaches_parent``). So
+        a press that arrives here over one of those frozen controls is the user
+        trying to navigate a locked axis; remind them, then pass it on. The
+        padlock itself stays enabled, so unlock clicks never reach this handler.
+
+        A press on the frozen *slider* also claims the axis, standing in for the
+        ``sliderPressed`` a disabled scrollbar never emits. That is the only way
+        back to a locked axis: ``_focus_up``/``_focus_down`` skip it by design,
+        so without this the arrow keys could not be pointed at an axis the user
+        means to resume on once it is unlocked.
+        """
+        if not self.dims.is_axis_movable(self.axis):
+            point = (
+                event.position().toPoint()
+                if hasattr(event, 'position')
+                else event.pos()
+            )
+            frozen = (self.slider, self.play_button, self.curslice_label)
+            if any(w.geometry().contains(point) for w in frozen):
+                if (
+                    event.button() == Qt.MouseButton.LeftButton
+                    and self.slider.geometry().contains(point)
+                ):
+                    self.dims.last_used = self.axis
+                self._flash_lock()
+        super().mousePressEvent(event)
+
+    def _flash_lock(self) -> None:
+        """Briefly tint the padlock amber to remind the user the axis is locked.
+
+        A pure reminder — it changes no dims state. Called both for pointer
+        pokes (``mousePressEvent`` above) and for blocked key/step/editor
+        navigation relayed from ``Dims.events.axis_lock_rejected``. Only the
+        persistent per-axis lock flashes; a transient owner lock does not.
+        """
+        if self.axis >= self.dims.ndim or not self.dims.axis_locked[self.axis]:
+            return
+        self._set_lock_flash(True)
+        self._lock_flash_timer.start()  # restart if already running (debounce)
+
+    def _end_lock_flash(self) -> None:
+        self._set_lock_flash(False)
+
+    def _set_lock_flash(self, on: bool) -> None:
+        """Toggle the padlock's ``flash`` style property and repolish."""
+        if self.lock_button.property('flash') == on:
+            return
+        self.lock_button.setProperty('flash', on)
+        self.lock_button.style().unpolish(self.lock_button)
+        self.lock_button.style().polish(self.lock_button)
 
     def _set_slice_from_label(self) -> None:
         """Update the dims point based on the curslice_label."""
@@ -218,12 +303,153 @@ class QtDimSliderWidget(QWidget):
 
         play_button.fpsspin.editingFinished.connect(self._fps_listener)
         play_button.reverse_check.stateChanged.connect(self._fps_listener)
+        play_button.unit_combo.currentIndexChanged.connect(
+            self._playback_unit_changed
+        )
+        play_button.reset_button.clicked.connect(self._reset_playback_settings)
         self.play_stopped.connect(play_button._handle_stop)
         self.play_started.connect(play_button._handle_start)
         return play_button
 
+    def _create_lock_button_widget(self) -> QPushButton:
+        """Create the padlock button that toggles this axis's per-axis lock."""
+        button = QPushButton(self)
+        button.setObjectName('axis_lock_button')
+        button.setProperty('locked', False)  # for styling
+        button.setProperty('flash', False)  # transient amber lock reminder
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        button.clicked.connect(self._on_lock_button_clicked)
+        return button
+
+    def _on_lock_button_clicked(self) -> None:
+        """Toggle this axis's persistent lock from the padlock button.
+
+        Only reachable while the button is enabled, i.e. when the user is
+        allowed to toggle locks and no owner lock is held (which would make
+        ``lock_axis``/``unlock_axis`` raise).
+        """
+        if self.dims.axis_locked[self.axis]:
+            self.dims.unlock_axis(self.axis)
+        else:
+            self.dims.lock_axis(self.axis)
+
+    def _update_lock_state(self) -> None:
+        """Sync the padlock and this axis's navigation controls to the model.
+
+        Enablement is per child rather than on the whole row: every control that
+        *changes the slice* is disabled when the axis cannot move, so the freeze
+        reads as disabled rather than unresponsive, while the padlock itself
+        stays enabled so the user can unlock again. The axis label is left alone
+        — it renames the axis, it does not navigate.
+        """
+        # Guard against a stale widget briefly outliving an ndim reduction; the
+        # sliders are rebuilt on ndim change, but dims events can arrive first.
+        if self.axis >= self.dims.ndim:
+            return
+
+        locked = self.dims.axis_locked[self.axis]
+        movable = self.dims.is_axis_movable(self.axis)
+
+        for widget in (self.slider, self.play_button, self.curslice_label):
+            widget.setEnabled(movable)
+
+        # The padlock is a status indicator always; it is clickable only when the
+        # user may toggle locks and no owner lock has frozen the configuration.
+        self.lock_button.setEnabled(
+            self.dims.axis_lock_interactive and not self.dims.navigation_locked
+        )
+        self.lock_button.setToolTip(
+            trans._('Unlock axis {axis}', axis=self.axis)
+            if locked
+            else trans._('Lock axis {axis}', axis=self.axis)
+        )
+        if self.lock_button.property('locked') != locked:
+            self.lock_button.setProperty('locked', locked)
+            self.lock_button.style().unpolish(self.lock_button)
+            self.lock_button.style().polish(self.lock_button)
+
+    def _playback_nsteps(self) -> int:
+        """Step count of this axis, for fps <-> cycle-time conversion.
+
+        Falls back to 1 when the axis has transiently disappeared during an
+        ndim reduction (same guard as ``_set_slice_from_label``).
+        """
+        try:
+            return max(self.dims.nsteps[self.axis], 1)
+        except IndexError:
+            return 1
+
+    def _playback_display_conversion(self, value: float) -> float:
+        """Convert between |fps| and the popup's displayed speed value.
+
+        ``fps = nsteps / seconds`` and ``seconds = nsteps / fps``, so one
+        division serves both directions; 0 maps to 0 (stopped). In fps mode
+        the display *is* fps and the value passes through unchanged.
+        """
+        if not self.play_button.uses_cycle_time:
+            return value
+        return self._playback_nsteps() / value if value else 0
+
+    def _sync_playback_unit_from_settings(self) -> None:
+        """Point the popup at the globally configured speed unit.
+
+        Switching to cycle time also applies the default cycle duration;
+        switching to fps keeps the current rate and merely re-expresses it.
+        """
+        settings = get_settings().application
+        if settings.playback_unit == PlaybackUnit.SECONDS_PER_CYCLE:
+            self._apply_cycle_seconds(settings.playback_cycle_seconds)
+        else:
+            self.play_button.set_playback_unit(PlaybackUnit.FRAMES_PER_SECOND)
+
+    def _sync_cycle_seconds_from_settings(self) -> None:
+        """Follow the default cycle duration while in cycle-time mode."""
+        if self.play_button.uses_cycle_time:
+            self._apply_cycle_seconds(
+                get_settings().application.playback_cycle_seconds
+            )
+
+    def _apply_cycle_seconds(self, seconds: float) -> None:
+        """Show ``seconds`` per cycle in the popup and derive this axis's fps."""
+        button = self.play_button
+        button.set_playback_unit(PlaybackUnit.SECONDS_PER_CYCLE)
+        with qt_signals_blocked(button.fpsspin):
+            button.fpsspin.setValue(seconds)
+        self._fps_listener()
+
+    def _playback_unit_changed(self) -> None:
+        """Re-express the popup's speed value in the newly selected unit.
+
+        The underlying fps is unchanged - only its display converts (10 fps
+        over 25 steps reads as 2.5 seconds per cycle).
+        """
+        spin = self.play_button.fpsspin
+        with qt_signals_blocked(spin):
+            spin.setMaximum(
+                PLAYBACK_CYCLE_SECONDS_MAX
+                if self.play_button.uses_cycle_time
+                else PLAYBACK_FPS_MAX
+            )
+            spin.setValue(self._playback_display_conversion(abs(self._fps)))
+
+    def _reset_playback_settings(self) -> None:
+        """Re-read this axis's playback settings from the preferences."""
+        settings = get_settings()
+        fps = settings.application.playback_fps
+        # Set both controls before announcing: a mid-edit emit would hand a
+        # running animation a speed the user never chose.
+        with qt_signals_blocked(self.play_button.reverse_check):
+            self.play_button.reverse_check.setChecked(fps < 0)
+            self.play_button.fpsspin.setValue(abs(fps))
+        self._fps_listener()
+        self.play_button.mode_combo.setCurrentText(
+            str(settings.application.playback_mode).replace('_', ' ')
+        )
+
     def _fps_listener(self, *_) -> None:
-        fps = self.play_button.fpsspin.value()
+        fps = self._playback_display_conversion(
+            self.play_button.fpsspin.value()
+        )
         if self.play_button.reverse_check.isChecked():
             fps *= -1
             self.play_button.setProperty('reverse', 'True')
@@ -277,6 +503,11 @@ class QtDimSliderWidget(QWidget):
             self.totslice_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
             self._update_slice_labels()
 
+            # In cycle-time mode the seconds value is the user's intent, so a
+            # new step count re-derives fps rather than the reverse.
+            if self.play_button.uses_cycle_time:
+                self._fps_listener()
+
             if self.margins_popup:
                 self.margins_popup._reset_sliders()
 
@@ -307,7 +538,9 @@ class QtDimSliderWidget(QWidget):
         if self._fps == value:
             return
         self._fps = value
-        self.play_button.fpsspin.setValue(abs(value))
+        self.play_button.fpsspin.setValue(
+            self._playback_display_conversion(abs(value))
+        )
         self.play_button.reverse_check.setChecked(value < 0)
         self.fps_changed.emit(value)
 
@@ -506,13 +739,25 @@ class QtPlayButton(QPushButton):
         if hasattr(fpsspin, 'setStepType'):
             # this was introduced in Qt 5.12.  Totally optional, just nice.
             fpsspin.setStepType(QDoubleSpinBox.AdaptiveDecimalStepType)
-        fpsspin.setMaximum(500)
+        fpsspin.setMaximum(PLAYBACK_FPS_MAX)
         fpsspin.setMinimum(0)
-        form_layout.insertRow(
-            0,
-            QLabel('frames per second:', parent=self.popup),
-            fpsspin,
+
+        # The row label doubles as a unit selector; the slider widget converts
+        # the displayed value, and fps stays the canonical speed everywhere.
+        unit_combo = QComboBox(self.popup)
+        unit_combo.setObjectName('playbackUnitComboBox')
+        unit_combo.addItem(
+            'frames per second:', PlaybackUnit.FRAMES_PER_SECOND
         )
+        unit_combo.addItem(
+            'seconds per cycle:', PlaybackUnit.SECONDS_PER_CYCLE
+        )
+        unit_combo.setToolTip(
+            'Set playback speed as a frame rate, or as the duration of one '
+            'full cycle through this axis.'
+        )
+        form_layout.insertRow(0, unit_combo, fpsspin)
+        self.unit_combo = unit_combo
         self.fpsspin = fpsspin
 
         revcheck = QCheckBox(self.popup)
@@ -529,6 +774,23 @@ class QtPlayButton(QPushButton):
         )
         mode_combo.setCurrentText(str(self.mode).replace('_', ' '))
         self.mode_combo = mode_combo
+
+        reset_button = QPushButton('restore defaults', parent=self.popup)
+        reset_button.setObjectName('playbackResetButton')
+        reset_button.setToolTip(
+            'Reset this axis to the playback speed and mode set in preferences.'
+        )
+        form_layout.insertRow(3, reset_button)
+        self.reset_button = reset_button
+
+    @property
+    def uses_cycle_time(self) -> bool:
+        """True when the popup expresses speed as seconds per full cycle."""
+        return self.unit_combo.currentData() == PlaybackUnit.SECONDS_PER_CYCLE
+
+    def set_playback_unit(self, unit: PlaybackUnit) -> None:
+        """Select ``unit`` in the popup (no-op if already selected)."""
+        self.unit_combo.setCurrentIndex(self.unit_combo.findData(unit))
 
     def mouseReleaseEvent(self, event):
         """Show popup for right-click, toggle animation for right click.

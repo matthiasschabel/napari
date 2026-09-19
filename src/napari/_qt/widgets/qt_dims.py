@@ -63,6 +63,49 @@ class QtDims(QWidget):
         self.dims.events.ndisplay.connect(self._update_display)
         self.dims.events.order.connect(self._update_display)
         self.dims.events.last_used.connect(self._on_last_used_changed)
+        self.dims.events.navigation_lock.connect(self._on_navigation_lock)
+        self.dims.events.axis_locked.connect(self._on_navigation_lock)
+        self.dims.events.axis_lock_interactive.connect(
+            self._on_navigation_lock
+        )
+        self.dims.events.axis_lock_rejected.connect(
+            self._on_axis_lock_rejected
+        )
+
+    def _on_navigation_lock(self, event=None):
+        """Sync every slider row to the current lock state.
+
+        Locked axes cannot move the plane anyway (``Dims.set_current_step`` is a
+        no-op), but leaving the controls enabled lets the thumb drag with no
+        effect, which reads as a broken slider. Disabling them makes the freeze
+        legible. Both lock tiers land here: the transient
+        ``lock_navigation`` owner lock and the persistent per-axis locks.
+
+        Delegated per row so enablement can be applied per child — the padlock
+        must stay usable on an axis whose navigation controls are disabled.
+        """
+        for widget in self.slider_widgets:
+            widget._update_lock_state()
+
+        # Locking the axis being animated would strand playback: its play button
+        # has just been disabled, so the user could no longer stop it, and every
+        # further frame would be a blocked (event-less) write. Stop it here.
+        if self.is_playing:
+            axis = self._animation_thread.axis
+            if axis is not None and not self.dims.is_axis_movable(axis):
+                self.stop()
+
+    def _on_axis_lock_rejected(self, event) -> None:
+        """Flash the padlock on each axis whose navigation was just blocked.
+
+        Covers the non-pointer paths — arrow keys, stepping, the slice editor —
+        which never touch the disabled slider widget and so are relayed here by
+        ``Dims.set_point``. The pointer path flashes itself in the row's
+        ``mousePressEvent``.
+        """
+        for axis in event.value:
+            if 0 <= axis < len(self.slider_widgets):
+                self.slider_widgets[axis]._flash_lock()
 
     @property
     def nsliders(self):
@@ -92,6 +135,29 @@ class QtDims(QWidget):
         """Updates range for a given slider."""
         for widget in self.slider_widgets:
             widget._update_range()
+
+        animation_thread = self._animation_thread
+        if animation_thread.isRunning():
+            axis = animation_thread.axis
+            frame_range = animation_thread.frame_range
+            if (
+                axis is None
+                or axis >= len(self._displayed_sliders)
+                or not self._displayed_sliders[axis]
+            ) or (
+                frame_range != (0, 0)
+                and frame_range[1] >= self.dims.nsteps[axis]
+            ):
+                self.stop()
+            else:
+                animation_thread.set_frame_range(frame_range)
+                animation_thread.current = min(
+                    max(
+                        animation_thread.current,
+                        animation_thread.min_point,
+                    ),
+                    animation_thread.max_point - 1,
+                )
 
         nsliders = np.sum(self._displayed_sliders)
         self.setMinimumHeight(nsliders * self.SLIDERHEIGHT)
@@ -133,9 +199,13 @@ class QtDims(QWidget):
             if self._displayed_sliders[i]:
                 self._update_slider()
         # Freshly created sliders have no `last_used` style property yet, and
-        # the `last_used` event only fires on a change
+        # the `last_used` event only fires on a change — when it is already at
+        # its default (0) no event arrives and the active slider is never
+        # marked, so it opens unhighlighted.
         self._on_last_used_changed()
         self.stop()
+        # Freshly created sliders default to enabled; reapply any active lock.
+        self._on_navigation_lock()
 
     def _resize_axis_labels(self):
         """When any of the labels get updated, this method updates all label
@@ -324,7 +394,12 @@ class QtDims(QWidget):
 
     @Slot()
     def stop(self) -> None:
-        """Stop axis animation and wait for its thread to finish."""
+        """Stop axis animation and wait for the animation thread to finish.
+
+        Joining matters on teardown: the thread notices the stop flag
+        immediately, but until it has actually finished Qt would abort the
+        process if the widget owning it were destroyed in the meantime.
+        """
         self._animation_thread._stop()
         self._animation_thread.wait()
 
@@ -352,10 +427,20 @@ class QtDims(QWidget):
         the canvas can draw, this will drop the intermediate frames, keeping
         the effective frame rate constant even if the canvas cannot keep up.
         """
+        if not self.dims.is_axis_movable(axis):
+            # A locked axis's write is dropped *and* emits no event, so no draw
+            # would ever restore `_play_ready` and playback would hang
+            # unrecoverably. Stop instead of issuing a dead write.
+            self.stop()
+            return
         if self.dims._play_ready:
             # disable additional point advance requests until this one draws
             self.dims._play_ready = False
+            before = self.dims.point
             self.dims.set_current_step(axis, frame)
+            if self.dims.point == before:
+                # nothing moved, so no draw is coming to re-enable playback
+                self.dims._play_ready = True
 
     def closeEvent(self, event):
         [w.deleteLater() for w in self.slider_widgets]

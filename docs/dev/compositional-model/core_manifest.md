@@ -1,10 +1,16 @@
 # Compositional core extraction manifest
 
-**Status:** Active
-**Last updated:** 2026-09-17
+**Status:** Implemented
+**Last updated:** 2026-09-19
 **Scope:** the `compositional-core` branch to be cut from `908b3ed80`; the
 file, export and test lists the extraction is executed and checked against.
 Companion to [core_split_design.md](core_split_design.md) section 2.
+
+The extraction below is complete. Its files remain on compositional-core and
+exploration, but were removed from production integration on 2026-09-19 because
+pirana has no current consumers. See [the branch boundary](../compositional_model_boundary.md)
+for the replacement synchronization policy. The original manifest and acceptance
+procedure below document the extraction snapshot.
 
 ## Context
 
@@ -481,7 +487,6 @@ drag-to-zoom hunk, and which notes travel) are recorded above.
 
 ## Next Steps
 
-1. Build `compositional-core` and run sections 5.1 through 5.5. The file lists
-   in sections 1, 2 and 4 are the input; section 5.1 is the check.
-2. Merge it into `integration` and reconcile this branch, per
-   `core_split_design.md` section 3.
+Maintain the retained model on compositional-core. Merge production fixes from
+integration into core, then core into exploration, per
+[the branch boundary](../compositional_model_boundary.md).

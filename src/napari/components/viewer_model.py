@@ -91,8 +91,10 @@ from napari.utils.events import (
 from napari.utils.key_bindings import KeymapProvider
 from napari.utils.misc import ensure_list_of_layer_data_tuple, is_sequence
 from napari.utils.mouse_bindings import MousemapProviderPydantic
+from napari.utils.notifications import show_info
 from napari.utils.progress import progress
 from napari.utils.theme import available_themes, is_theme_available
+from napari.utils.translations import trans
 
 if TYPE_CHECKING:
     from npe2.types import SampleDataCreator
@@ -101,6 +103,7 @@ if TYPE_CHECKING:
     from napari.components.grid import GridCanvas
     from napari.components.overlays import (
         CanvasAxesOverlay,
+        DirectionLabelsOverlay,
         ScaleBarOverlay,
         SceneAxesOverlay,
         TextOverlay,
@@ -323,6 +326,10 @@ class ViewerModel(KeymapProvider, MousemapProviderPydantic, EventedModel):
         return self.scene.camera
 
     @property
+    def direction_labels(self) -> DirectionLabelsOverlay:
+        return self.canvas.overlays.direction_labels  # type: ignore[return-value]
+
+    @property
     @deprecated(
         (
             'viewer.axes is a deprecated attribute since 0.9.0. Use viewer.scene.overlays.axes instead.'
@@ -336,7 +343,7 @@ class ViewerModel(KeymapProvider, MousemapProviderPydantic, EventedModel):
         .. deprecated:: 0.9.0
             The axes property is deprecated. Use `viewer.scene.overlays.axes` instead.
         """
-        return self.scene.overlays.axes  # type: ignore[return-value]
+        return self.scene.overlays.axes  # pyrefly: ignore [bad-return]
 
     @property
     @deprecated(
@@ -352,7 +359,7 @@ class ViewerModel(KeymapProvider, MousemapProviderPydantic, EventedModel):
         .. deprecated:: 0.9.0
             The floating_axes property is deprecated. Use `viewer.canvas.overlays.axes` instead.
         """
-        return self.canvas.overlays.axes  # type: ignore[return-value]
+        return self.canvas.overlays.axes  # pyrefly: ignore [bad-return]
 
     @property
     @deprecated(
@@ -368,7 +375,7 @@ class ViewerModel(KeymapProvider, MousemapProviderPydantic, EventedModel):
         .. deprecated:: 0.9.0
             The scale_bar property is deprecated. Use `viewer.canvas.overlays.scale_bar` instead.
         """
-        return self.canvas.overlays.scale_bar  # type: ignore[return-value]
+        return self.canvas.overlays.scale_bar  # pyrefly: ignore [bad-return]
 
     @property
     @deprecated(
@@ -384,7 +391,7 @@ class ViewerModel(KeymapProvider, MousemapProviderPydantic, EventedModel):
         .. deprecated:: 0.9.0
             The text_overlay property is deprecated. Use `viewer.canvas.overlays.text` instead.
         """
-        return self.canvas.overlays.text  # type: ignore[return-value]
+        return self.canvas.overlays.text  # pyrefly: ignore [bad-return]
 
     @property
     @deprecated(
@@ -855,6 +862,10 @@ class ViewerModel(KeymapProvider, MousemapProviderPydantic, EventedModel):
                 list(self.cursor.position) + [0] * dim_diff
             )
 
+        # The world may have been renumbered under an open draw; its lock still
+        # holds the exempt set derived from the old arity.
+        self._reassert_draw_lock()
+
     def _update_mouse_pan(self, event):
         """Set the viewer interactive mouse panning"""
         if event.source is self.layers.selection.active:
@@ -950,10 +961,10 @@ class ViewerModel(KeymapProvider, MousemapProviderPydantic, EventedModel):
                 key = next(iter(coord2val))  # choose arbitrary coordinate
                 coord2val = {key: values}
             status_strs = [
-                key + separator.join(values)
+                key + separator.join(values)  # pyrefly: ignore [unbound-name]
                 for key, values in coord2val.items()
             ]
-            status_str = separator.join(status_strs)
+            status_str = separator.join(status_strs)  # pyrefly: ignore [unbound-name]
         elif coord_str and not self.canvas.grid.enabled:
             status_str = coord_str + '[empty]'
         elif self.canvas.grid.enabled:
@@ -1012,6 +1023,20 @@ class ViewerModel(KeymapProvider, MousemapProviderPydantic, EventedModel):
         layer.events.reload.connect(self._on_layer_reload)
         if hasattr(layer.events, 'mode'):
             layer.events.mode.connect(self._on_layer_mode_change)
+        # A layer that reports a slice-keyed drawing window (currently Shapes)
+        # freezes slice navigation while a shape is being constructed, so the
+        # viewed plane cannot move out from under the in-progress vertices.
+        # Both boundary events are required: the lock is taken on one and
+        # released on the other, so a layer exposing only one is not wired.
+        if hasattr(layer.events, 'drawing_started') and hasattr(
+            layer.events, 'drawing_finished'
+        ):
+            layer.events.drawing_started.connect(
+                self._on_layer_drawing_started
+            )
+            layer.events.drawing_finished.connect(
+                self._on_layer_drawing_finished
+            )
         self._layer_help_from_mode(layer)
 
         # Update dims
@@ -1058,6 +1083,103 @@ class ViewerModel(KeymapProvider, MousemapProviderPydantic, EventedModel):
         if (active := self.layers.selection.active) is not None:
             self.help = active.help
 
+    def _on_layer_drawing_started(self, event) -> None:
+        """Freeze slice navigation while a layer draws a slice-keyed shape.
+
+        The drawing layer takes the navigation lock (as owner), so the sliders,
+        2D/3D toggle and axis-order controls are inert until the draw finishes.
+        This keeps every vertex on the shape's origin slice (napari #9207).
+
+        Only the axes the layer is actually sliced on are frozen. A layer is
+        sliced on the *trailing* ``layer.ndim`` world axes (see
+        ``_LayerSlicingState.make_slice_input``, which takes ``[-self.ndim:]``
+        of the world slice), so the leading ones cannot change which slice its
+        geometry sits on and are left navigable. A 2D Shapes layer in a 4D
+        viewer therefore keeps both sliders live, while a layer at viewer arity
+        still freezes everything.
+        """
+        layer = event.source
+        prev_owner = self.dims.navigation_lock_owner
+        if prev_owner is not None and prev_owner is not layer:
+            # Another layer's draw is still open (e.g. the active layer was
+            # switched mid-draw, which does not finish the previous draw). It
+            # owns the single navigation lock, so acquiring here would raise a
+            # RuntimeError out of this mouse-event callback. Finish the stale
+            # draw first: that commits/discards its partial shape and releases
+            # its lock via drawing_finished, leaving at most one open draw.
+            finish = getattr(prev_owner, '_finish_drawing', None)
+            if finish is not None:
+                finish()
+        self.dims.lock_navigation(
+            layer, exempt=self._draw_lock_exempt(layer), lock_order=True
+        )
+
+    def _draw_lock_exempt(self, layer: Layer) -> tuple[int, ...]:
+        """Sliders whose position the drawing ``layer`` does not consume.
+
+        Read off the layer's own ``_slice_input``, which is what actually governs
+        slicing, rather than recomputed from the arity difference. Those two agree
+        only in the default axis order: after a roll, ``dims.order`` decides which
+        world axes are displayed, so the axes a layer ignores are not simply the
+        leading ones. Deriving from the slice input keeps one source of truth.
+
+        A padlocked axis is never exempted. ``exempt`` overrides the per-axis
+        locks while an owner lock is held, so including one would silently undo a
+        lock the user asked for.
+        """
+        offset = self.dims.ndim - layer.ndim
+        sliced = {
+            int(axis) + offset for axis in layer._slice_input.not_displayed
+        }
+        locked = self.dims.axis_locked
+        return tuple(
+            axis
+            for axis in self.dims.not_displayed
+            if axis not in sliced and not locked[axis]
+        )
+
+    def _reassert_draw_lock(self) -> None:
+        """Re-take an open draw's lock after the world's dimensionality changed.
+
+        ``dims.ndim`` follows the layer list, so adding or removing an unrelated
+        layer mid-draw renumbers the world while the lock keeps the exempt set it
+        was given. Shrinking from 4D to 3D turned exempt ``(0,)`` — a spare axis
+        of the wider world — into the drawing layer's own slice axis, which then
+        moved and stranded the open shape. Re-deriving is enough: a same-owner
+        re-lock replaces the exempt set, and the shape's own coordinates are
+        unaffected by the renumbering.
+        """
+        owner = self.dims.navigation_lock_owner
+        if owner is None or not isinstance(owner, Layer):
+            return
+        if owner not in self.layers:
+            return
+        self.dims.lock_navigation(
+            owner, exempt=self._draw_lock_exempt(owner), lock_order=True
+        )
+
+    def _on_layer_drawing_finished(self, event) -> None:
+        """Release the navigation lock taken for a layer's draw."""
+        layer = event.source
+        if self.dims.navigation_lock_owner is layer:
+            self.dims.unlock_navigation(layer)
+
+    def _toggle_ndisplay(self) -> None:
+        """Toggle the displayed dimensionality between 2 and 3.
+
+        Single guarded implementation shared by the keybinding action and the
+        View menu action. ``ndisplay`` is a direct field assignment, which the
+        navigation lock does not guard, so the lock is enforced here: changing
+        the displayed axes mid-draw would strand an in-progress slice-keyed
+        shape on axes that are no longer displayed.
+        """
+        if self.dims.navigation_locked:
+            show_info(
+                trans._('Cannot toggle 2D/3D view while navigation is locked.')
+            )
+            return
+        self.dims.ndisplay = 3 if self.dims.ndisplay == 2 else 2
+
     def _on_remove_layer(self, event):
         """Disconnect old layer events.
 
@@ -1072,6 +1194,12 @@ class ViewerModel(KeymapProvider, MousemapProviderPydantic, EventedModel):
             The layer that was added (same as input).
         """
         layer = event.value
+
+        # If the layer is removed mid-draw it may never fire drawing_finished
+        # (and its events are about to be disconnected), so release any
+        # navigation lock it holds here to avoid stranding dims locked.
+        if self.dims.navigation_lock_owner is layer:
+            self.dims.unlock_navigation(layer)
 
         # Disconnect all connections from layer
         disconnect_events(layer.events, self)
@@ -1340,12 +1468,12 @@ class ViewerModel(KeymapProvider, MousemapProviderPydantic, EventedModel):
                     raise TypeError(
                         f"Received sequence for argument '{k}', did you mean to specify a 'channel_axis'? "
                     )
-            layer = Image(data, **kwargs)
+            layer = Image(data, **kwargs)  # pyrefly: ignore [bad-argument-type]
             self.layers.append(layer)
 
             return layer
 
-        layerdata_list = split_channels(data, channel_axis, **kwargs)
+        layerdata_list = split_channels(data, channel_axis, **kwargs)  # pyrefly: ignore [bad-argument-type]
 
         layer_list = [
             Image(image, **i_kwargs) for image, i_kwargs, _ in layerdata_list
@@ -1425,7 +1553,7 @@ class ViewerModel(KeymapProvider, MousemapProviderPydantic, EventedModel):
                 added = []
                 needs_error = True
                 for datum in ensure_list_of_layer_data_tuple(
-                    list(data(**kwargs))
+                    list(data(**kwargs))  # pyrefly: ignore [bad-argument-type]
                 ):
                     if datum[0] is not None:
                         needs_error = False
@@ -1869,7 +1997,7 @@ def _normalize_layer_data(data: LayerData) -> FullLayerData:
             )
     else:
         _data.append(guess_labels(_data[0]))
-    return tuple(_data)
+    return tuple(_data)  # pyrefly: ignore [bad-return]
 
 
 def _unify_data_and_user_kwargs(
@@ -2004,4 +2132,4 @@ for _layer in (
     layers.Vectors,
 ):
     func = create_add_method(_layer)
-    setattr(ViewerModel, func.__name__, func)
+    setattr(ViewerModel, func.__name__, func)  # pyrefly: ignore [missing-attribute]

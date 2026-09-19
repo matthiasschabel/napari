@@ -46,6 +46,72 @@ def create_known_shapes_layer():
     return layer, n_shapes, known_non_shape
 
 
+def _assert_last_shape_is_committed(layer: Shapes) -> None:
+    index = layer.nshapes - 1
+    shape = layer._data_view.shapes[index]
+    assert layer._data_view.staged_index is None
+    assert shape.z_index == max(layer.z_index)
+
+    vertices_slice = layer._data_view._vertices_slice_available(index)
+    np.testing.assert_allclose(
+        layer._data_view._vertices[vertices_slice], shape.data_displayed
+    )
+
+    mesh_vertices_slice = layer._data_view._mesh_vertices_slice_available(
+        index
+    )
+    expected_vertices = np.concatenate(
+        [
+            shape._face_vertices,
+            shape._edge_vertices + shape.edge_width * shape._edge_offsets,
+        ]
+    )
+    np.testing.assert_allclose(
+        layer._data_view._mesh.vertices[mesh_vertices_slice],
+        expected_vertices,
+    )
+
+    mesh_triangles_slice = layer._data_view._mesh_triangles_slice_available(
+        index
+    )
+    expected_triangles = np.concatenate(
+        [
+            shape._face_triangles + mesh_vertices_slice.start,
+            shape._edge_triangles
+            + mesh_vertices_slice.start
+            + shape.face_vertices_count,
+        ]
+    )
+    np.testing.assert_array_equal(
+        layer._data_view._mesh.triangles[mesh_triangles_slice],
+        expected_triangles,
+    )
+    expected_colors = np.concatenate(
+        [
+            np.repeat(
+                [layer.face_color[index]],
+                shape.face_triangles_count,
+                axis=0,
+            ),
+            np.repeat(
+                [layer.edge_color[index]],
+                shape.edge_triangles_count,
+                axis=0,
+            ),
+        ]
+    )
+    np.testing.assert_allclose(
+        layer._data_view._mesh.triangles_colors[mesh_triangles_slice],
+        expected_colors,
+    )
+    np.testing.assert_allclose(
+        layer._data_view._mesh.displayed_triangles_colors[
+            -shape.triangles_count :
+        ],
+        expected_colors,
+    )
+
+
 def test_not_adding_or_selecting_shape(create_known_shapes_layer):
     """Don't add or select a shape by clicking on one in pan_zoom mode."""
     layer, n_shapes, _ = create_known_shapes_layer
@@ -109,6 +175,448 @@ def test_add_simple_shape(shape_type, create_known_shapes_layer):
     # Ensure it's selected, accounting for zero-indexing
     assert len(layer.selected_data) == 1
     assert layer.selected_data == {n_shapes}
+    _assert_last_shape_is_committed(layer)
+
+
+@pytest.mark.parametrize('shape_type', ['rectangle', 'ellipse', 'line'])
+def test_gui_creation_defers_aggregate_geometry_until_release(
+    shape_type, create_known_shapes_layer
+):
+    layer, n_shapes, start = create_known_shapes_layer
+    layer.mode = f'add_{shape_type}'
+    set_data = Mock()
+    layer.events.set_data.connect(set_data)
+    aggregate_sizes = (
+        len(layer._data_view._vertices),
+        len(layer._data_view._mesh.vertices),
+        len(layer._data_view._mesh.triangles),
+    )
+
+    mouse_press_callbacks(
+        layer,
+        read_only_mouse_event(type='mouse_press', position=start),
+    )
+
+    index = n_shapes
+    assert layer._data_view.staged_index == index
+    assert len(layer.data) == n_shapes + 1
+    assert aggregate_sizes == (
+        len(layer._data_view._vertices),
+        len(layer._data_view._mesh.vertices),
+        len(layer._data_view._mesh.triangles),
+    )
+    assert set_data.call_count == 0
+
+    end = [40, 60]
+    mouse_move_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_move', is_dragging=True, position=end
+        ),
+    )
+
+    assert aggregate_sizes == (
+        len(layer._data_view._vertices),
+        len(layer._data_view._mesh.vertices),
+        len(layer._data_view._mesh.triangles),
+    )
+    assert set_data.call_count == 0
+
+    mouse_release_callbacks(
+        layer,
+        read_only_mouse_event(type='mouse_release', position=end),
+    )
+
+    assert layer._data_view.staged_index is None
+    assert set_data.call_count == 1
+    assert len(layer._data_view._vertices) > aggregate_sizes[0]
+    assert len(layer._data_view._mesh.vertices) > aggregate_sizes[1]
+    assert len(layer._data_view._mesh.triangles) > aggregate_sizes[2]
+
+
+def test_invalid_gui_shape_removes_zero_width_staging_ranges(
+    create_known_shapes_layer,
+):
+    layer, n_shapes, start = create_known_shapes_layer
+    layer.mode = 'add_polyline'
+    aggregate_arrays = (
+        layer._data_view._vertices.copy(),
+        layer._data_view._mesh.vertices.copy(),
+        layer._data_view._mesh.triangles.copy(),
+    )
+
+    mouse_press_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_press', position=start, pos=np.asarray(start)
+        ),
+    )
+    assert layer._data_view.staged_index == n_shapes
+
+    mouse_double_click_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_double_click', position=start, pos=np.asarray(start)
+        ),
+    )
+
+    assert layer._data_view.staged_index is None
+    assert len(layer.data) == n_shapes
+    np.testing.assert_array_equal(
+        layer._data_view._vertices, aggregate_arrays[0]
+    )
+    np.testing.assert_array_equal(
+        layer._data_view._mesh.vertices, aggregate_arrays[1]
+    )
+    np.testing.assert_array_equal(
+        layer._data_view._mesh.triangles, aggregate_arrays[2]
+    )
+
+
+@pytest.mark.parametrize(
+    'operation',
+    ['move_to_front', 'move_to_back', 'z_index', 'remove_selected'],
+)
+def test_public_mutation_finishes_staged_shape(
+    operation, create_known_shapes_layer
+):
+    layer, n_shapes, start = create_known_shapes_layer
+    layer.mode = 'add_rectangle'
+    mouse_press_callbacks(
+        layer,
+        read_only_mouse_event(type='mouse_press', position=start),
+    )
+    assert layer._data_view.staged_index == n_shapes
+
+    if operation == 'z_index':
+        layer.z_index = -1
+    else:
+        getattr(layer, operation)()
+
+    assert layer._data_view.staged_index is None
+    if operation == 'remove_selected':
+        assert layer.nshapes == n_shapes
+    else:
+        assert layer.nshapes == n_shapes + 1
+
+
+def test_visibility_change_finishes_staged_shape(create_known_shapes_layer):
+    layer, n_shapes, start = create_known_shapes_layer
+    layer.mode = 'add_rectangle'
+    mouse_press_callbacks(
+        layer,
+        read_only_mouse_event(type='mouse_press', position=start),
+    )
+    assert layer._data_view.staged_index == n_shapes
+
+    layer.visible = False
+
+    assert layer._data_view.staged_index is None
+
+
+def test_not_displayed_axis_uses_aggregate_geometry():
+    """A layer with a non-displayed axis keeps the aggregate creation path.
+
+    The aggregate arrays then hold only the shapes on the current slice, so
+    those on other slices make the displayed index runs discontiguous and a
+    staged shape with no aggregate range of its own cannot be addressed.
+    """
+
+    def rectangle(z, offset):
+        return [
+            [z, offset, offset],
+            [z, offset, offset + 5],
+            [z, offset + 5, offset + 5],
+            [z, offset + 5, offset],
+        ]
+
+    layer = Shapes([rectangle(0, 0), rectangle(1, 10), rectangle(0, 20)])
+    layer.scale_factor = 0.001
+    assert layer._data_view._displayed.tolist() == [True, False, True]
+
+    layer.mode = 'add_rectangle'
+    mouse_press_callbacks(
+        layer,
+        read_only_mouse_event(type='mouse_press', position=[0, 40, 40]),
+    )
+    assert layer._data_view.staged_index is None
+
+    mouse_move_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_move', is_dragging=True, position=[0, 50, 60]
+        ),
+    )
+    mouse_release_callbacks(
+        layer,
+        read_only_mouse_event(type='mouse_release', position=[0, 50, 60]),
+    )
+
+    assert layer.nshapes == 4
+    np.testing.assert_allclose(
+        layer.data[-1],
+        [[0, 40, 40], [0, 40, 60], [0, 50, 60], [0, 50, 40]],
+    )
+
+
+@pytest.mark.parametrize('shape_type', ['rectangle', 'ellipse', 'line'])
+def test_add_simple_shape_drawing_events(
+    shape_type, create_known_shapes_layer
+):
+    """A single-action shape draw emits exactly one drawing_started and one
+    drawing_finished across the press/drag/release."""
+    layer, _, known_non_shape = create_known_shapes_layer
+    layer.mode = f'add_{shape_type}'
+
+    started = Mock()
+    finished = Mock()
+    layer.events.drawing_started.connect(started)
+    layer.events.drawing_finished.connect(finished)
+
+    event = read_only_mouse_event(
+        type='mouse_press',
+        position=known_non_shape,
+    )
+    mouse_press_callbacks(layer, event)
+
+    known_non_shape_end = [40, 60]
+    event = read_only_mouse_event(
+        type='mouse_move',
+        is_dragging=True,
+        position=known_non_shape_end,
+    )
+    mouse_move_callbacks(layer, event)
+
+    event = read_only_mouse_event(
+        type='mouse_release',
+        position=known_non_shape_end,
+    )
+    mouse_release_callbacks(layer, event)
+
+    assert layer.is_creating is False
+    started.assert_called_once()
+    finished.assert_called_once()
+
+
+# --- #9207: an in-progress shape stays pinned to its origin slice -----------
+# The out-of-plane (not-displayed) axes of every vertex are held at the values
+# captured when the draw began, so stepping a navigable (exempt) axis mid-draw
+# cannot re-attribute geometry to another slice. Data-space z of the first
+# position below is 5.0 for every scale.
+
+
+def _slice_stepping_positions(scale_z):
+    """World positions whose not-displayed (axis 0) value changes each step."""
+    zs = [5, 9, 2, 7]
+    ys = [10, 40, 60, 30]
+    xs = [20, 60, 40, 80]
+    return [[z * scale_z, y, x] for z, y, x in zip(zs, ys, xs, strict=True)]
+
+
+def _press(layer, pos, *, drag=False):
+    event = read_only_mouse_event(
+        type='mouse_press',
+        is_dragging=drag,
+        position=pos,
+        pos=np.array(pos[1:], dtype=float),
+    )
+    mouse_press_callbacks(layer, event)
+
+
+@pytest.mark.parametrize('scale', [(1, 1, 1), (4, 2, 3)])
+def test_click_polygon_pins_out_of_plane_axis(scale):
+    """Clicking successive vertices while an exempt axis is stepped keeps every
+    vertex on the origin slice, so a polygon can never span slices (#9207)."""
+    layer = Shapes(ndim=3)
+    layer.scale = list(scale)
+    layer.mode = 'add_polygon'
+    positions = _slice_stepping_positions(scale[0])
+
+    for pos in positions:
+        _press(layer, pos)
+    event = read_only_mouse_event(
+        type='mouse_double_click',
+        position=positions[-1],
+        pos=np.array(positions[-1][1:], dtype=float),
+    )
+    mouse_double_click_callbacks(layer, event)
+
+    assert len(layer.data) == 1
+    # Every vertex pinned to the first click's data-space slice (z == 5).
+    np.testing.assert_allclose(layer.data[-1][:, 0], 5.0)
+
+
+@pytest.mark.parametrize(
+    'mode',
+    [
+        'add_rectangle',
+        'add_ellipse',
+        'add_line',
+        'add_path',
+        'add_polygon_lasso',
+    ],
+)
+@pytest.mark.parametrize('scale', [(1, 1, 1), (4, 2, 3)])
+def test_drag_draw_pins_out_of_plane_axis(mode, scale):
+    """Dragging (tablet path, lasso, or a single-drag rectangle/ellipse/line)
+    while an exempt axis is stepped keeps every vertex on the origin slice."""
+    get_settings().experimental.rdp_epsilon = 0
+    layer = Shapes(ndim=3)
+    layer.scale = list(scale)
+    layer.mode = mode
+    positions = _slice_stepping_positions(scale[0])
+
+    _press(layer, positions[0], drag=True)
+    for pos in positions[1:]:
+        event = read_only_mouse_event(
+            type='mouse_move',
+            is_dragging=True,
+            position=pos,
+            pos=np.array(pos[1:], dtype=float),
+        )
+        mouse_move_callbacks(layer, event)
+    event = read_only_mouse_event(
+        type='mouse_release',
+        is_dragging=True,
+        position=positions[-1],
+        pos=np.array(positions[-1][1:], dtype=float),
+    )
+    mouse_release_callbacks(layer, event)
+
+    assert len(layer.data) == 1
+    np.testing.assert_allclose(layer.data[-1][:, 0], 5.0)
+
+
+def test_anchor_holds_through_real_dims_reslice():
+    """Integration: stepping the slice through a real ``Dims`` model (which
+    replaces the layer slice input and clears selection) between vertices still
+    keeps every vertex on the origin slice."""
+    from napari.components import Dims
+
+    layer = Shapes(ndim=3)
+    layer.mode = 'add_polygon'
+    dims = Dims(ndim=3, ndisplay=2, range=[(0, 50, 1)] * 3)
+    dims.current_step = (5, 0, 0)
+    layer._slice_dims(dims)
+
+    _press(layer, [5, 10, 20])
+    # A genuine navigation to slice 9 between vertices, not just a changed event.
+    dims.current_step = (9, 0, 0)
+    layer._slice_dims(dims)
+    _press(layer, [9, 40, 60])
+    _press(layer, [9, 60, 40])
+    event = read_only_mouse_event(
+        type='mouse_double_click',
+        position=[9, 60, 40],
+        pos=np.array([60, 40], dtype=float),
+    )
+    mouse_double_click_callbacks(layer, event)
+
+    assert len(layer.data) == 1
+    np.testing.assert_allclose(layer.data[-1][:, 0], 5.0)
+
+
+def test_drag_draw_pins_slice_through_real_dims_reslice():
+    """Guarantee the anchor makes: geometry stays on the origin slice even when a
+    real ``Dims`` reslice happens mid-drag.
+
+    Note the *interaction* still degrades here -- a real reslice clears
+    ``selected_data`` (``_set_view_slice``), so the drag-follow stalls until
+    napari preserves the in-progress selection across a slice change (gh #9059).
+    Exempt-axis navigation during creation is therefore reliable for click-based
+    drawing (selection is re-established per click); mid-drag reslicing pins the
+    geometry but does not keep tracking the cursor. This test pins the guarantee
+    (no multi-slice geometry), not the degraded follow."""
+    from napari.components import Dims
+
+    layer = Shapes(ndim=3)
+    layer.mode = 'add_rectangle'
+    dims = Dims(ndim=3, ndisplay=2, range=[(0, 50, 1)] * 3)
+    dims.current_step = (5, 0, 0)
+    layer._slice_dims(dims)
+
+    _press(layer, [5, 10, 20], drag=True)
+    dims.current_step = (9, 0, 0)  # a genuine slice step mid-drag
+    layer._slice_dims(dims)
+    event = read_only_mouse_event(
+        type='mouse_move',
+        is_dragging=True,
+        position=[9, 40, 60],
+        pos=np.array([40, 60], dtype=float),
+    )
+    mouse_move_callbacks(layer, event)
+    event = read_only_mouse_event(
+        type='mouse_release',
+        is_dragging=True,
+        position=[9, 40, 60],
+        pos=np.array([40, 60], dtype=float),
+    )
+    mouse_release_callbacks(layer, event)
+
+    assert len(layer.data) == 1
+    # Geometry never spans slices, regardless of the follow degradation.
+    np.testing.assert_allclose(layer.data[-1][:, 0], 5.0)
+
+
+def test_anchor_invalidated_on_partition_change_mid_draw():
+    """If an axis-order/ndisplay change reshapes which axes are displayed while
+    drawing, the anchor (keyed to the old axes) is invalidated rather than
+    overwriting a now-displayed axis -- so the anchor never *adds* corruption.
+
+    This does not make the partition change itself safe: vertices already placed
+    can still span the axis that became not-displayed (the pre-anchor multi-slice
+    condition). That is why partition changes are blocked while navigation is
+    locked (see the sorter / 2D-3D guards); this test only pins the anchor's own
+    non-regression, not partition-change safety."""
+    from napari.components import Dims
+
+    layer = Shapes(ndim=4)
+    layer.mode = 'add_polygon'
+    dims = Dims(ndim=4, ndisplay=2, range=[(0, 50, 1)] * 4)
+    dims.order = (0, 1, 2, 3)  # not-displayed [0, 1], displayed [2, 3]
+    dims.current_step = (5, 6, 0, 0)
+    layer._slice_dims(dims)
+
+    _press(layer, [5, 6, 10, 20])
+    _press(layer, [5, 6, 40, 60])
+    assert set(layer._creation_anchor) == {0, 1}
+
+    # Reorder so axis 0 becomes displayed -- a partition change.
+    dims.order = (2, 1, 0, 3)
+    layer._slice_dims(dims)
+    # Cursor value 99 on the now-displayed axis 0 must NOT be forced to the
+    # stale anchor value (5); the anchor invalidates instead.
+    _press(layer, [99, 6, 30, 40])
+
+    assert layer._creation_anchor == {}
+    # The post-reorder vertex kept its cursor value on the freed axis.
+    assert layer.data[-1][-1, 0] == 99.0
+
+
+def test_second_draw_reanchors_to_new_origin_slice():
+    """The origin-slice anchor is dropped when a draw finishes, so the next draw
+    pins to its own origin slice rather than the previous one."""
+    layer = Shapes(ndim=3)
+    layer.mode = 'add_polygon'
+
+    def draw(zs):
+        ys, xs = [10, 40, 60], [20, 60, 40]
+        for z, y, x in zip(zs, ys, xs, strict=True):
+            _press(layer, [z, y, x])
+        event = read_only_mouse_event(
+            type='mouse_double_click',
+            position=[zs[-1], ys[-1], xs[-1]],
+            pos=np.array([ys[-1], xs[-1]], dtype=float),
+        )
+        mouse_double_click_callbacks(layer, event)
+
+    draw([3, 8, 1])
+    draw([12, 4, 19])
+
+    assert len(layer.data) == 2
+    np.testing.assert_allclose(layer.data[0][:, 0], 3.0)
+    np.testing.assert_allclose(layer.data[1][:, 0], 12.0)
+    assert layer._creation_anchor == {}
 
 
 def test_line_fixed_angles(create_known_shapes_layer):
@@ -290,6 +798,7 @@ def test_path_tablet(create_known_shapes_layer):
     )
     mouse_press_callbacks(layer, event)
     assert layer.shape_type[-1] == 'path'
+    assert layer._data_view.staged_index == n_shapes
 
     for coord in desired_shape[1:]:
         event = read_only_mouse_event(
@@ -317,6 +826,7 @@ def test_path_tablet(create_known_shapes_layer):
     # Ensure it's selected, accounting for zero-indexing
     assert len(layer.selected_data) == 1
     assert layer.selected_data == {n_shapes}
+    _assert_last_shape_is_committed(layer)
 
 
 def test_polyline_mouse(create_known_shapes_layer):
@@ -332,6 +842,7 @@ def test_polyline_mouse(create_known_shapes_layer):
     )
     mouse_press_callbacks(layer, event)
     assert layer.shape_type[-1] == 'path'
+    assert layer._data_view.staged_index == n_shapes
 
     for coord in desired_shape[1:]:
         event = read_only_mouse_event(
@@ -356,6 +867,7 @@ def test_polyline_mouse(create_known_shapes_layer):
     # Ensure it's selected, accounting for zero-indexing
     assert len(layer.selected_data) == 1
     assert layer.selected_data == {n_shapes}
+    _assert_last_shape_is_committed(layer)
 
 
 def test_polygon_lasso_tablet(create_known_shapes_layer):
@@ -375,6 +887,7 @@ def test_polygon_lasso_tablet(create_known_shapes_layer):
     mouse_press_callbacks(layer, event)
 
     assert layer.shape_type[-1] != 'polygon'
+    assert layer._data_view.staged_index == n_shapes
 
     for coord in desired_shape[1:]:
         event = read_only_mouse_event(
@@ -401,6 +914,243 @@ def test_polygon_lasso_tablet(create_known_shapes_layer):
     # Ensure it's selected, accounting for zero-indexing
     assert len(layer.selected_data) == 1
     assert layer.selected_data == {n_shapes}
+    _assert_last_shape_is_committed(layer)
+
+
+@pytest.mark.parametrize(
+    ('moves', 'expected_added'),
+    [
+        ([], 0),
+        ([[20, 50], [60, 50], [60, 20]], 1),
+    ],
+)
+def test_lasso_release_after_keyboard_finish(
+    create_known_shapes_layer, moves, expected_added
+):
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+    start = [20, 20]
+
+    get_settings().experimental.rdp_epsilon = 0
+    layer.mode = 'add_polygon_lasso'
+    added = _record_added(layer)
+    mouse_press_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_press',
+            is_dragging=True,
+            position=start,
+            pos=start,
+        ),
+    )
+    for coord in moves:
+        mouse_move_callbacks(
+            layer,
+            read_only_mouse_event(
+                type='mouse_move',
+                is_dragging=True,
+                position=coord,
+                pos=coord,
+            ),
+        )
+
+    key_bindings.finish_drawing_shape(layer)
+    expected_events = [(n_shapes,)] if expected_added else [()]
+    assert added == expected_events
+
+    end = moves[-1] if moves else start
+    mouse_move_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_move',
+            is_dragging=True,
+            position=end,
+            pos=end,
+        ),
+    )
+
+    mouse_release_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_release',
+            is_dragging=True,
+            position=end,
+            pos=end,
+        ),
+    )
+    assert layer.nshapes == n_shapes + expected_added
+    assert not layer.is_creating
+    assert added == expected_events
+
+
+@pytest.mark.parametrize('preserve_lasso_vertices', [False, True])
+def test_lasso_return_to_first_vertex_is_stored_open(
+    create_known_shapes_layer, preserve_lasso_vertices
+):
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+    vertices = np.array(
+        [
+            [20.0, 20.0],
+            [20.0, 50.0],
+            [60.0, 50.0],
+            [np.nextafter(20.0, 21.0), 20.0],
+        ]
+    )
+
+    get_settings().experimental.rdp_epsilon = 1
+    layer.preserve_lasso_vertices = preserve_lasso_vertices
+    layer.mode = 'add_polygon_lasso'
+    mouse_press_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_press',
+            is_dragging=True,
+            position=vertices[0],
+            pos=vertices[0],
+        ),
+    )
+    for coord in vertices[1:]:
+        mouse_move_callbacks(
+            layer,
+            read_only_mouse_event(
+                type='mouse_move',
+                is_dragging=True,
+                position=coord,
+                pos=coord,
+            ),
+        )
+    mouse_release_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_release',
+            is_dragging=True,
+            position=vertices[-1],
+            pos=vertices[-1],
+        ),
+    )
+
+    assert layer.nshapes == n_shapes + 1
+    np.testing.assert_allclose(layer.data[-1], vertices[:-1], rtol=0, atol=0)
+    assert not np.array_equal(layer.data[-1][0], layer.data[-1][-1])
+
+
+@pytest.mark.parametrize(
+    ('preserve_lasso_vertices', 'expected_added'), [(False, 0), (True, 1)]
+)
+def test_polygon_lasso_preserves_sampled_vertices(
+    create_known_shapes_layer, preserve_lasso_vertices, expected_added
+):
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+    desired_shape = np.array(
+        [[20, 30], [20, 50], [20, 70], [60, 70], [80, 20]]
+    )
+
+    get_settings().experimental.rdp_epsilon = 100
+    layer.preserve_lasso_vertices = preserve_lasso_vertices
+    layer.mode = 'add_polygon_lasso'
+
+    event = read_only_mouse_event(
+        type='mouse_press',
+        is_dragging=True,
+        position=desired_shape[0],
+        pos=desired_shape[0],
+    )
+    mouse_press_callbacks(layer, event)
+
+    for coord in desired_shape[1:]:
+        event = read_only_mouse_event(
+            type='mouse_move',
+            is_dragging=True,
+            position=coord,
+            pos=coord,
+        )
+        mouse_move_callbacks(layer, event)
+
+    event = read_only_mouse_event(
+        type='mouse_release',
+        is_dragging=True,
+        position=desired_shape[-1],
+        pos=desired_shape[-1],
+    )
+    mouse_release_callbacks(layer, event)
+
+    assert len(layer.data) == n_shapes + expected_added
+    if preserve_lasso_vertices:
+        assert np.array_equal(desired_shape, layer.data[-1])
+
+
+def test_preserve_lasso_vertices_event():
+    layer = Shapes()
+    changed = Mock()
+    layer.events.preserve_lasso_vertices.connect(changed)
+
+    layer.preserve_lasso_vertices = True
+
+    changed.assert_called_once()
+
+
+def test_preserve_lasso_vertices_requires_bool():
+    with pytest.raises(TypeError, match='must be a bool'):
+        Shapes(preserve_lasso_vertices=1)
+
+
+@pytest.mark.parametrize(
+    ('preserve_lasso_vertices', 'expected_added'), [(False, 0), (True, 1)]
+)
+def test_polygon_lasso_preserves_sampled_vertices(
+    create_known_shapes_layer, preserve_lasso_vertices, expected_added
+):
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+    desired_shape = np.array(
+        [[20, 30], [20, 50], [20, 70], [60, 70], [80, 20]]
+    )
+
+    get_settings().experimental.rdp_epsilon = 100
+    layer.preserve_lasso_vertices = preserve_lasso_vertices
+    layer.mode = 'add_polygon_lasso'
+
+    event = read_only_mouse_event(
+        type='mouse_press',
+        is_dragging=True,
+        position=desired_shape[0],
+        pos=desired_shape[0],
+    )
+    mouse_press_callbacks(layer, event)
+
+    for coord in desired_shape[1:]:
+        event = read_only_mouse_event(
+            type='mouse_move',
+            is_dragging=True,
+            position=coord,
+            pos=coord,
+        )
+        mouse_move_callbacks(layer, event)
+
+    event = read_only_mouse_event(
+        type='mouse_release',
+        is_dragging=True,
+        position=desired_shape[-1],
+        pos=desired_shape[-1],
+    )
+    mouse_release_callbacks(layer, event)
+
+    assert len(layer.data) == n_shapes + expected_added
+    if preserve_lasso_vertices:
+        assert np.array_equal(desired_shape, layer.data[-1])
+
+
+def test_preserve_lasso_vertices_event():
+    layer = Shapes()
+    changed = Mock()
+    layer.events.preserve_lasso_vertices.connect(changed)
+
+    layer.preserve_lasso_vertices = True
+
+    changed.assert_called_once()
+
+
+def test_preserve_lasso_vertices_requires_bool():
+    with pytest.raises(TypeError, match='must be a bool'):
+        Shapes(preserve_lasso_vertices=1)
 
 
 def test_polygon_lasso_mouse(create_known_shapes_layer):
@@ -478,7 +1228,7 @@ def test_add_complex_shape(shape_type, create_known_shapes_layer):
     # Add shape at location where non exists
     layer.mode = f'add_{shape_type}'
 
-    for coord in desired_shape:
+    for i, coord in enumerate(desired_shape):
         # Simulate move, click, and release
         event = read_only_mouse_event(
             type='mouse_move',
@@ -492,6 +1242,8 @@ def test_add_complex_shape(shape_type, create_known_shapes_layer):
             pos=np.array(coord, dtype=float),
         )
         mouse_press_callbacks(layer, event)
+        if i == 0:
+            assert layer._data_view.staged_index == n_shapes
         event = read_only_mouse_event(
             type='mouse_release',
             position=coord,
@@ -517,6 +1269,232 @@ def test_add_complex_shape(shape_type, create_known_shapes_layer):
     # Ensure it's selected, accounting for zero-indexing
     assert len(layer.selected_data) == 1
     assert layer.selected_data == {n_shapes}
+    _assert_last_shape_is_committed(layer)
+
+
+def test_finish_polygon_with_data_rewriting_listener(
+    create_known_shapes_layer,
+):
+    """A listener may rewrite `data` from the event that finishes a polygon.
+
+    The `data` setter calls `_finish_drawing`, so such a listener re-enters it. The
+    drawing state must already be cleared, or the re-entrant call takes the creation
+    branch with an index that has been reset, and raises.
+    """
+    layer, _n_shapes, _known_non_shape = create_known_shapes_layer
+    layer.mode = 'add_polygon'
+
+    for coord in [[20, 30], [10, 50], [60, 40], [80, 20]]:
+        for kind, callbacks in (
+            ('mouse_move', mouse_move_callbacks),
+            ('mouse_press', mouse_press_callbacks),
+            ('mouse_release', mouse_release_callbacks),
+        ):
+            callbacks(
+                layer,
+                read_only_mouse_event(
+                    type=kind,
+                    position=coord,
+                    pos=np.array(coord, dtype=float),
+                ),
+            )
+
+    seen_is_creating = []
+    rewritten = False
+
+    def rewrite_data(event):
+        nonlocal rewritten
+        seen_is_creating.append(layer._is_creating)
+        if not rewritten:
+            rewritten = True
+            layer.data = list(layer.data)
+
+    layer.events.data.connect(rewrite_data)
+
+    mouse_double_click_callbacks(
+        layer, read_only_mouse_event(type='mouse_double_click', position=coord)
+    )
+
+    assert rewritten, 'the listener never ran; nothing was exercised'
+    assert not layer._is_creating
+    assert all(seen is False for seen in seen_is_creating), (
+        f'data event saw _is_creating={seen_is_creating}, expected all False'
+    )
+
+
+def _click_polygon_vertices(layer, coords):
+    for coord in coords:
+        for kind, callbacks in (
+            ('mouse_move', mouse_move_callbacks),
+            ('mouse_press', mouse_press_callbacks),
+            ('mouse_release', mouse_release_callbacks),
+        ):
+            callbacks(
+                layer,
+                read_only_mouse_event(
+                    type=kind,
+                    position=coord,
+                    pos=np.array(coord, dtype=float),
+                ),
+            )
+
+
+def _draw_polygon(layer, coords):
+    """Click each coordinate, then double-click to finish."""
+    _click_polygon_vertices(layer, coords)
+    mouse_double_click_callbacks(
+        layer,
+        read_only_mouse_event(type='mouse_double_click', position=coords[-1]),
+    )
+
+
+def test_clicking_near_first_polygon_vertex_closes_polygon(
+    create_known_shapes_layer,
+):
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+    vertices = np.array([[20, 20], [20, 50], [60, 50]])
+    layer.scale_factor = 1
+    layer.mode = 'add_polygon'
+    added = _record_added(layer)
+
+    _click_polygon_vertices(layer, vertices)
+
+    first = vertices[0] + [0, 4]
+    mouse_move_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_move',
+            position=first,
+            pos=np.asarray(first, dtype=float),
+        ),
+    )
+    mouse_press_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_press',
+            position=first,
+            pos=np.asarray(first, dtype=float),
+        ),
+    )
+    mouse_release_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_release',
+            position=first,
+            pos=np.asarray(first, dtype=float),
+        ),
+    )
+    mouse_double_click_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_double_click',
+            position=first,
+            pos=np.asarray(first, dtype=float),
+        ),
+    )
+
+    assert layer.nshapes == n_shapes + 1
+    np.testing.assert_allclose(layer.data[-1], vertices)
+    assert layer.shape_type[-1] == 'polygon'
+    assert not layer.is_creating
+    assert added == [(n_shapes,)]
+
+
+def test_clicking_first_polygon_vertex_does_not_close_two_vertices(
+    create_known_shapes_layer,
+):
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+    vertices = np.array([[20, 20], [20, 50]])
+    layer.scale_factor = 1
+    layer.mode = 'add_polygon'
+
+    _click_polygon_vertices(layer, vertices)
+    first = vertices[0]
+    mouse_move_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_move',
+            position=first,
+            pos=np.asarray(first, dtype=float),
+        ),
+    )
+    mouse_press_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_press',
+            position=first,
+            pos=np.asarray(first, dtype=float),
+        ),
+    )
+
+    assert layer.is_creating
+    assert layer.nshapes == n_shapes + 1
+
+    key_bindings.finish_drawing_shape(layer)
+    assert layer.nshapes == n_shapes
+
+
+def _record_added(layer):
+    added = []
+
+    def on_data(event):
+        if str(event.action) == 'added':
+            added.append(tuple(event.data_indices))
+
+    layer.events.data.connect(on_data)
+    return added
+
+
+def test_drawing_lifecycle_event_order(create_known_shapes_layer):
+    """`drawing_finished` precedes the settled `data(ADDED)` for a drawn shape.
+
+    `drawing_finished` means the geometry is final, not that every notification
+    has been delivered. Firing it first is what lets a `data` listener observe
+    `is_creating` as False and write to `data` from inside the callback.
+    """
+    layer, _n_shapes, _known_non_shape = create_known_shapes_layer
+    layer.mode = 'add_polygon'
+
+    order = []
+    layer.events.drawing_started.connect(
+        lambda e: order.append('drawing_started')
+    )
+    layer.events.drawing_finished.connect(
+        lambda e: order.append('drawing_finished')
+    )
+    layer.events.data.connect(lambda e: order.append(f'data:{e.action}'))
+
+    _draw_polygon(layer, [[20, 30], [10, 50], [60, 40], [80, 20]])
+
+    assert order.index('drawing_finished') < order.index('data:added'), order
+    assert order.index('drawing_started') < order.index('drawing_finished'), (
+        order
+    )
+
+
+def test_drawn_polygon_reports_its_index(create_known_shapes_layer):
+    """Finishing a drawn polygon names the shape it added."""
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+    layer.mode = 'add_polygon'
+    added = _record_added(layer)
+
+    _draw_polygon(layer, [[20, 30], [10, 50], [60, 40], [80, 20]])
+
+    assert len(layer.data) == n_shapes + 1
+    assert added == [(n_shapes,)], added
+
+
+def test_discarded_polygon_reports_no_index(create_known_shapes_layer):
+    """A polygon too small to keep is discarded, so nothing is reported added."""
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+    layer.mode = 'add_polygon'
+    added = _record_added(layer)
+
+    # Two vertices cannot make a polygon; `_finish_drawing` drops it.
+    _draw_polygon(layer, [[20, 30], [10, 50]])
+
+    assert len(layer.data) == n_shapes, 'the degenerate shape should be gone'
+    assert added == [()], added
 
 
 @pytest.mark.parametrize(
@@ -1374,3 +2352,135 @@ def test_drag_start_selection(
         pytest.fail('Unreachable code')
     assert layer._drag_box is None
     assert layer._drag_start is None
+
+
+def _press_at(layer, position, pos, button=1, double_click=False):
+    event_type = 'mouse_double_click' if double_click else 'mouse_press'
+    event = read_only_mouse_event(
+        type=event_type, position=position, pos=np.array(pos), button=button
+    )
+    if double_click:
+        mouse_double_click_callbacks(layer, event)
+    else:
+        mouse_press_callbacks(layer, event)
+
+
+def _move(layer, position, pos):
+    event = read_only_mouse_event(
+        type='mouse_move', position=position, pos=np.array(pos)
+    )
+    mouse_move_callbacks(layer, event)
+
+
+def _draw_vertices(layer, positions, move=True):
+    """Place one vertex per position with the click-per-vertex tools.
+
+    `move` mirrors a real gesture, where the cursor travels between clicks. The
+    tools also have to cope with two clicks and no move in between, which is
+    what `move=False` exercises.
+    """
+    for i, position in enumerate(positions):
+        pos = (float(i + 1), float(i + 1))
+        _press_at(layer, position, pos)
+        if move:
+            _move(layer, position, pos)
+
+
+@pytest.mark.parametrize('mode', ['add_polygon', 'add_polyline'])
+@pytest.mark.parametrize('move', [True, False])
+def test_right_click_removes_last_placed_vertex(
+    mode, move, create_known_shapes_layer
+):
+    layer, n_shapes, _ = create_known_shapes_layer
+    layer.mode = mode
+
+    _draw_vertices(layer, [(0, 0), (0, 10), (10, 10)], move=move)
+    before = layer.data[-1].copy()
+
+    # Away from every placed vertex: adding one here would be visible in the
+    # comparison below, where adding one on top of the last would not.
+    _press_at(layer, (5, 5), (9.0, 9.0), button=2)
+
+    assert layer._is_creating
+    assert len(layer.data) == n_shapes + 1
+    # The final vertex tracks the cursor, so the placed vertex before it is the
+    # one a right click takes back.
+    np.testing.assert_array_equal(
+        layer.data[-1], np.delete(before, -2, axis=0)
+    )
+
+    # The surviving final vertex still follows the cursor.
+    _move(layer, (7, 3), (20.0, 20.0))
+    np.testing.assert_allclose(layer.data[-1][-1], (7, 3))
+
+
+@pytest.mark.parametrize('mode', ['add_polygon', 'add_polyline'])
+def test_right_click_past_first_vertex_discards_shape(
+    mode, create_known_shapes_layer
+):
+    layer, n_shapes, _ = create_known_shapes_layer
+    layer.mode = mode
+
+    _draw_vertices(layer, [(0, 0), (0, 10), (10, 10)])
+
+    for i in range(len(layer.data[-1])):
+        _press_at(layer, (10, 10), (9.0 - i, 9.0 - i), button=2)
+        if not layer._is_creating:
+            break
+
+    assert not layer._is_creating
+    assert not layer._is_moving
+    assert len(layer.data) == n_shapes
+    assert len(layer.selected_data) == 0
+
+
+@pytest.mark.parametrize('mode', ['add_polygon', 'add_polyline'])
+def test_right_double_click_removes_a_vertex(mode, create_known_shapes_layer):
+    layer, _n_shapes, _ = create_known_shapes_layer
+    layer.mode = mode
+
+    _draw_vertices(layer, [(0, 0), (0, 10), (10, 10), (10, 0)])
+    before = layer.data[-1].copy()
+
+    # A canvas double click arrives as a press followed by a double-click
+    # event, so both clicks have to take a vertex back.
+    _press_at(layer, (5, 5), (9.0, 9.0), button=2)
+    _press_at(layer, (5, 5), (9.0, 9.0), button=2, double_click=True)
+
+    assert layer._is_creating
+    np.testing.assert_array_equal(
+        layer.data[-1], np.delete(before, [-3, -2], axis=0)
+    )
+
+
+@pytest.mark.parametrize('mode', ['add_polygon', 'add_polyline'])
+def test_vertex_can_be_placed_again_after_removal(
+    mode, create_known_shapes_layer
+):
+    """A right click must not block the next click where the cursor already is."""
+    layer, _n_shapes, _ = create_known_shapes_layer
+    layer.mode = mode
+
+    _draw_vertices(layer, [(0, 0), (0, 10), (10, 10)])
+    n_vertices = len(layer.data[-1])
+
+    _press_at(layer, (5, 5), (9.0, 9.0), button=2)
+    assert len(layer.data[-1]) == n_vertices - 1
+
+    # The canvas position of the most recent click is what the duplicate-click
+    # guard holds, and a removal must not leave it holding one.
+    _press_at(layer, (0, 10), (3.0, 3.0))
+    assert len(layer.data[-1]) == n_vertices
+
+
+@pytest.mark.parametrize('mode', ['add_polygon', 'add_polyline'])
+def test_right_click_before_drawing_does_nothing(
+    mode, create_known_shapes_layer
+):
+    layer, n_shapes, _ = create_known_shapes_layer
+    layer.mode = mode
+
+    _press_at(layer, (5, 5), (9.0, 9.0), button=2)
+
+    assert not layer._is_creating
+    assert len(layer.data) == n_shapes
