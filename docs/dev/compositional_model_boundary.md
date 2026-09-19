@@ -36,6 +36,17 @@ are needed there. Do not merge either experimental branch into integration.
 An independently useful napari fix discovered experimentally is extracted as
 a small topic change and integrated separately.
 
+With all three worktrees clean, the routine synchronization commands are:
+
+```sh
+git -C ../napari-compositional-core merge --no-ff integration
+git -C ../napari-compositional-model merge --no-ff compositional-core
+```
+
+Resolve conflicts normally and run the affected experimental tests. Keeping
+production fixes upstream of the model does not make those fixes immune to
+interactions with experimental behavior.
+
 The first synchronization after this removal must retain the experimental
 files explicitly: Git otherwise propagates their deletion to core and then
 exploration. Record those resolutions in merge commits, not by replacing the
@@ -69,3 +80,27 @@ does not itself change those pinned environments.
 
 Keep experimental development downstream of integration. Reconsider production
 adoption only alongside a concrete pirana consumer and its acceptance tests.
+
+### Verification on 2026-09-19
+
+- Production napari: layer-slicer tests, 21 passed; QtViewer, canvas, and
+  layer-linking tests, 99 passed and 23 skipped.
+- Pirana against the separated production source: capability, ImageScroller,
+  navigation-lock, ROI bridge, and colormap-manager adapter tests, 414 passed
+  and 1 skipped.
+- Synchronized core: all data-model tests plus scene geometry overlay tests,
+  590 passed.
+- Synchronized exploration: all data-model tests, 1370 passed.
+- Ruff check and format check passed for the three modified Python files in
+  the production removal.
+- Core's 55 model/test files and exploration's 93 model/test files are
+  unchanged from their pre-synchronization versions. Production has none.
+  The retained canvas, slicer, and QtViewer tests are also unchanged.
+- Both experimental branches contain the production removal in their
+  ancestry; `git merge-tree` confirms merging it again preserves their trees.
+
+Napari suites used the scipy-dev Python 3.14 environment; pirana used its
+Python 3.12 environment. Each run selected the intended napari source with
+PYTHONPATH. GUI runs used the real macOS display serially, and the main test
+processes used temporary cache/settings directories. These are focused
+compatibility checks, not the full napari or three-repository release bar.
