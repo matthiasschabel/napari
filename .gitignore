@@ -217,8 +217,3 @@ agent-logs/
 .context-cache/
 .embeddings/
 .vectorstore/
-
-# The compositional model keeps its maintainer docs in-tree under docs/dev/.
-!docs/
-docs/*
-!docs/dev/
