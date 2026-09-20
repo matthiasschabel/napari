@@ -1,6 +1,6 @@
 # Field-level navigation-lock chokepoint (NAVIGATION_LOCK_VERSION 2)
 
-**Status:** Deferred
+**Status:** Superseded
 **Last updated:** 2026-08-22
 **Scope:** napari `Dims` navigation lock — `src/napari/components/dims.py`; interacts with `src/napari/utils/events/evented_model.py` and `src/napari/components/viewer_model.py`
 
@@ -8,6 +8,10 @@
 > `napari/docs` repo). This maintainer note is intentionally force-tracked on the
 > `feature/dims-navigation-lock` branch to keep the analysis with the code. If this work is
 > upstreamed, relocate it to `napari/docs` (or wherever maintainers keep dev notes).
+
+## Superseded decision
+
+The point-request proposal #9439 closed in favor of open #9442. Its EventedModel interception is not the production migration target. Retain pirana's current owner-lock API and use [the branch inventory](branch_inventory.md) for current decisions. The historical design below is preserved as rationale.
 
 ## Context
 
