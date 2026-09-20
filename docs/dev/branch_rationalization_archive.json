@@ -1,0 +1,158 @@
+{
+  "status": "implemented",
+  "archive_location": "primary napari clone .git/refs/archive/2026-09-19 (local only; not /tmp)",
+  "entries": [
+    {
+      "branch": "backup-dims-lock-integration-20260824",
+      "sha": "e341bc2d929a05c07029c4f4d3328c75a57ebb2e",
+      "in_integration": false,
+      "pr": null,
+      "patch_bytes": 624986,
+      "reverse_applies_to_production": false,
+      "reason": "Historical navigation backup; archive unique history, current production owner-lock contract retained.",
+      "archive_ref": "refs/archive/2026-09-19/backup-dims-lock-integration-20260824",
+      "action": "archive local branch and remove its clean worktree",
+      "status": "removed; archive ref verified"
+    },
+    {
+      "branch": "backup-dims-lock-topic-20260824",
+      "sha": "fafe7bcbffd82ba2018497a92f01e3e265d6e4a0",
+      "in_integration": false,
+      "pr": null,
+      "patch_bytes": 624986,
+      "reverse_applies_to_production": false,
+      "reason": "Historical navigation backup; archive unique history.",
+      "archive_ref": "refs/archive/2026-09-19/backup-dims-lock-topic-20260824",
+      "action": "archive local branch and remove its clean worktree",
+      "status": "removed; archive ref verified"
+    },
+    {
+      "branch": "bench/layer-partition-scaling",
+      "sha": "43c0e083e0192275ddd96f4de45ea722cc35bee0",
+      "in_integration": false,
+      "pr": null,
+      "patch_bytes": 8164,
+      "reverse_applies_to_production": true,
+      "reason": "Patch reverse-applies to production; identical benchmark patch retained by perf/layer-scaling-benchmarks.",
+      "archive_ref": "refs/archive/2026-09-19/bench/layer-partition-scaling",
+      "action": "archive local branch and remove its clean worktree",
+      "status": "removed; archive ref verified"
+    },
+    {
+      "branch": "feature/dims-axis-lock-v1",
+      "sha": "93bdec766e7fac6670c6b91a583f18cb6d6d6086",
+      "in_integration": false,
+      "pr": null,
+      "patch_bytes": 22015,
+      "reverse_applies_to_production": false,
+      "reason": "Superseded axis-lock prototype; retain open PR #9442 on feature/dims-axis-lock.",
+      "archive_ref": "refs/archive/2026-09-19/feature/dims-axis-lock-v1",
+      "action": "archive local branch and remove its clean worktree",
+      "status": "removed; archive ref verified"
+    },
+    {
+      "branch": "fix/dims-lock-active-axis-clean",
+      "sha": "1356c21d6b9d4647996a1a14b2e3f3b776ade332",
+      "in_integration": true,
+      "pr": null,
+      "patch_bytes": 624743,
+      "reverse_applies_to_production": false,
+      "reason": "Exact duplicate of retained fix/dims-lock-active-axis (1356c21d6).",
+      "archive_ref": "refs/archive/2026-09-19/fix/dims-lock-active-axis-clean",
+      "action": "archive local branch and remove its clean worktree",
+      "status": "removed; archive ref verified"
+    },
+    {
+      "branch": "fix/playback-debounce-noop-frame",
+      "sha": "be84fe83972de62f8eea44c76bbf2f437b088d63",
+      "in_integration": false,
+      "pr": {
+        "headRefName": "fix/playback-debounce-noop-frame",
+        "number": 9440,
+        "state": "MERGED",
+        "url": "https://github.com/napari/napari/pull/9440"
+      },
+      "patch_bytes": 5424,
+      "reverse_applies_to_production": true,
+      "reason": "PR #9440 merged; branch patch reverse-applies to production.",
+      "archive_ref": "refs/archive/2026-09-19/fix/playback-debounce-noop-frame",
+      "action": "archive local branch and remove its clean worktree",
+      "status": "removed; archive ref verified"
+    },
+    {
+      "branch": "fix/playback-range-refresh",
+      "sha": "5cb6e5035456664c2d68ba686e16968999a717c9",
+      "in_integration": false,
+      "pr": null,
+      "patch_bytes": 5817,
+      "reverse_applies_to_production": false,
+      "reason": "PR #9440 merged; upstream inlines range refresh in QtDims._update_range, including bounds/current clamping and no-op frame handling; old helper prototype superseded.",
+      "archive_ref": "refs/archive/2026-09-19/fix/playback-range-refresh",
+      "action": "archive local branch and remove its clean worktree",
+      "status": "removed; archive ref verified"
+    },
+    {
+      "branch": "fix/vectors-emit-mode-on-color-setter",
+      "sha": "26af1649f84b5da4c54b40314758b6e319868a45",
+      "in_integration": true,
+      "pr": {
+        "headRefName": "fix/vectors-emit-mode-on-color-setter",
+        "number": 9396,
+        "state": "MERGED",
+        "url": "https://github.com/napari/napari/pull/9396"
+      },
+      "patch_bytes": 2168,
+      "reverse_applies_to_production": false,
+      "reason": "PR #9396 merged; upstream connects ColorManager event directly rather than lambda, removes setter re-emission, and retains the regression test.",
+      "archive_ref": "refs/archive/2026-09-19/fix/vectors-emit-mode-on-color-setter",
+      "action": "archive local branch and remove its clean worktree",
+      "status": "removed; archive ref verified"
+    },
+    {
+      "branch": "integration-rebuild",
+      "sha": "0b5b5bef3ac83cac4bbe2b49b027eb96e0df9061",
+      "in_integration": false,
+      "pr": null,
+      "patch_bytes": 171133,
+      "reverse_applies_to_production": false,
+      "reason": "Abandoned alternative production assembly. Preserve full history in local archive; integration remains sole production assembly.",
+      "archive_ref": "refs/archive/2026-09-19/integration-rebuild",
+      "action": "archive local branch and remove its clean worktree",
+      "status": "removed; archive ref verified"
+    },
+    {
+      "branch": "maintenance/separate-compositional-core",
+      "sha": "5b9fc7b16e8ec9d9b69f51339a1cbd25e4dde771",
+      "in_integration": true,
+      "pr": null,
+      "reason": "Completed production separation; exact commit retained by public mcslab-gui-5b9fc7b1 tag.",
+      "archive_ref": "refs/archive/2026-09-19/maintenance/separate-compositional-core",
+      "action": "archive local branch and remove its clean worktree",
+      "status": "removed; archive ref verified"
+    },
+    {
+      "branch": "perf/shapes-transparent-streams",
+      "sha": "afe3ef433601f95070792f30a0380bd0d10354a8",
+      "in_integration": false,
+      "pr": null,
+      "patch_bytes": 39445,
+      "reverse_applies_to_production": false,
+      "reason": "Deferred benchmark-only proposal; dev note and probes already retained in integration, no runtime optimization shipped.",
+      "archive_ref": "refs/archive/2026-09-19/perf/shapes-transparent-streams",
+      "action": "archive local branch and remove its clean worktree",
+      "status": "removed; archive ref verified"
+    },
+    {
+      "branch": "wip/roi-hole-overlays",
+      "sha": "cc026c3abd007350451adc04727b80ac63064f92",
+      "in_integration": false,
+      "pr": null,
+      "patch_bytes": 670028,
+      "reverse_applies_to_production": false,
+      "reason": "Inactive ROI overlay experiment. Preserve full prototype in archive; compositional exploration remains active experimental branch.",
+      "archive_ref": "refs/archive/2026-09-19/wip/roi-hole-overlays",
+      "action": "archive local branch and remove its clean worktree",
+      "status": "removed; archive ref verified"
+    }
+  ]
+}
