@@ -1,6 +1,6 @@
 # Per-axis navigation pin: contract, scope and staging
 
-**Status:** Active — blocked on maintainer response to napari#9278
+**Status:** Superseded
 **Last updated:** 2026-08-22
 **Scope:** napari `Dims` per-axis navigation pin — `src/napari/components/dims.py`,
 `src/napari/_qt/widgets/qt_dims.py`, `qt_dims_slider.py`,
@@ -34,6 +34,10 @@
   and still uses `trans._()`; it must be rebased onto current `upstream/main` and its own
   strings converted to f-strings before any of it goes up. See the fork's memory note on that
   rebase.
+
+## Superseded decision
+
+The point-request proposal #9439 closed in favor of open #9442. Its EventedModel interception is not the production migration target. Retain pirana's current owner-lock API and use [the branch inventory](branch_inventory.md) for current decisions. The historical design below is preserved as rationale.
 
 ## Context
 

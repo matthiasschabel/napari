@@ -1,0 +1,64 @@
+# Production fork branch inventory
+
+**Status:** Active
+**Last updated:** 2026-09-19
+**Scope:** napari integration, upstream topic branches, compositional experiments, and pirana consumers
+
+## Context
+
+Integration includes upstream main through 38ab38ff6 (#9396). A merged PR is not a reason to revert its old merge: inspect the remaining source delta. Retire a compatibility path when its fix is present in every supported consumer profile.
+
+## Current Decision
+
+Production assembly: `integration`. Experimental synchronization flows one way through `compositional-core` to `explore/compositional-data-model`. See [the model boundary](compositional_model_boundary.md).
+
+Pirana viewer's stock floor is 0.9.0rc1. #9257 and #9364 are already present there, so its fork-only autorepeat probe and private Vectors mode subscription are retired. #9396 is not in stock 0.9.1: retain the explicit direct-mode resynchronization. The appended-vector-color workaround addresses a separate unresolved API gap. The independent pirana-colormap package may still support napari 0.8.
+
+### Open upstream PRs: retain
+
+| PR | Branch | Purpose |
+|---|---|---|
+| [#9407](https://github.com/napari/napari/pull/9407) | `agent/tabular-numerals-window-scope` | Retain pending upstream review; preserve production adaptations. |
+| [#9442](https://github.com/napari/napari/pull/9442) | `feature/dims-axis-lock` | Retain pending upstream review; preserve production adaptations. |
+| [#9468](https://github.com/napari/napari/pull/9468) | `feature/monospace-status-readouts` | Retain pending upstream review; preserve production adaptations. |
+| [#9326](https://github.com/napari/napari/pull/9326) | `feature/playback-cycle-time` | Retain pending upstream review; preserve production adaptations. |
+| [#9275](https://github.com/napari/napari/pull/9275) | `feature/shapes-drawing-state` | Retain pending upstream review; preserve production adaptations. |
+| [#9361](https://github.com/napari/napari/pull/9361) | `feature/uniform-key-autorepeat` | Retain pending upstream review; preserve production adaptations. |
+| [#9335](https://github.com/napari/napari/pull/9335) | `feature/vectors-feature-color-mapping-controls` | Retain pending upstream review; preserve production adaptations. |
+| [#9532](https://github.com/napari/napari/pull/9532) | `fix/dock-widget-minimum-ratchet` | Retain pending upstream review; preserve production adaptations. |
+| [#9462](https://github.com/napari/napari/pull/9462) | `fix/dock-widget-size-policy` | Retain pending upstream review; preserve production adaptations. |
+| [#9533](https://github.com/napari/napari/pull/9533) | `fix/qtviewer-prepopulated-model` | Retain pending upstream review; preserve production adaptations. |
+| [#9328](https://github.com/napari/napari/pull/9328) | `fix/settings-reset-announces-every-field` | Retain pending upstream review; preserve production adaptations. |
+| [#9441](https://github.com/napari/napari/pull/9441) | `fix/shapes-remove-selected-mid-draw` | Retain pending upstream review; preserve production adaptations. |
+| [#9394](https://github.com/napari/napari/pull/9394) | `fix/shapes-slice-key-rounding` | Retain pending upstream review; preserve production adaptations. |
+| [#9418](https://github.com/napari/napari/pull/9418) | `perf/shapes-hide-empty-subvisuals` | Retain pending upstream review; preserve production adaptations. |
+| [#9419](https://github.com/napari/napari/pull/9419) | `perf/shapes-staged-creation` | Retain pending upstream review; preserve production adaptations. |
+| [#9411](https://github.com/napari/napari/pull/9411) | `perf/skip-identity-unit-conversion` | Retain pending upstream review; preserve production adaptations. |
+
+### Other production changes: retain
+
+- Navigation owner locks, draw exemptions, active-axis recovery, and direction labels remain consumed by pirana. Open #9442 does not replace the owner-lock API; do not delete it based on that proposal.
+- Shapes drawing-event order, scalar shape-type assignment, lasso vertex preservation, and custom cursors remain production features/fixes.
+- Exceptional GPU colors, infinity colormap fields, NaN handling, and the selector hook remain used by pirana's colormap workflow.
+- Rendering optimizations (extent/transform/shader reuse, empty subvisual suppression, viewport culling) remain separate production patches with measured evidence. No new rendering redesign is part of this maintenance pass.
+- #9335 remains retained but deferred: its legacy Vectors controls do not cover the dynamic-controls path. See [the controls decision](vectors_color_mapping_controls.md). Do not invent a public Vectors API rename during cleanup.
+
+### Archived work
+
+[The archive manifest](branch_rationalization_archive.json) records exact branch tips, reasons, and restore refs before branch removal. Archive refs live in the primary clone, not the temporary worktrees. They are local-only; no experimental history is newly published to the public fork. Restore with `git branch <name> refs/archive/2026-09-19/<name>`.
+
+Open PR branches and public dependency-retention tags are preserved. Merged branches are checked by landed code and regression tests; rejected prototypes are archived as unique history, never described as merged.
+
+## Alternatives Considered
+
+- Rebuild integration from a hand-selected manifest: rejected because it risks losing production fixes.
+- Publish archive tags publicly: rejected for mixed historical/experimental content. Durable local refs retain the work without publishing it.
+- Delete all branches whose PR closed: rejected; a closure can mean a still-needed downstream policy or a superseded design.
+
+## Deferred Work
+
+The owner-lock API remains until pirana migrates safely. The Vectors dynamic-controls gap remains an explicit upstream design task. Product decisions for held Delete and right-click vertex rollback are recorded with the consumer simplification review.
+
+## Next Steps
+
+After each upstream merge, inspect its integration delta, update the consumer compatibility boundary, run the relevant stock/fork tests, and retire the landed topic. Keep this inventory current rather than opening another competing assembly branch.
