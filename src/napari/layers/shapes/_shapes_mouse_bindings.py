@@ -353,15 +353,8 @@ def finish_drawing_shape(layer: Shapes, event: MouseEvent) -> None:
     layer : Shapes
         Napari shapes layer
     event : MouseEvent
-        A proxy read only wrapper around a vispy mouse event. Used to remove a
-        vertex on a right double click rather than finish the shape.
+        A proxy read only wrapper around a vispy mouse event.
     """
-    if event.button == 2:
-        # A double click arrives as one mouse press followed by this event, so
-        # the second click of a right double click removes its vertex here.
-        if layer._is_creating:
-            remove_last_vertex_from_path(layer)
-        return
     layer._finish_drawing()
 
 
@@ -469,40 +462,6 @@ def add_vertex_to_path(
     layer._last_cursor_position = np.array(event.pos)
 
 
-def remove_last_vertex_from_path(layer: Shapes) -> None:
-    """Remove the most recently placed vertex of the shape being drawn.
-
-    The final vertex of a shape under construction tracks the cursor, so the
-    most recently placed vertex is the second to last one. When no placed
-    vertex is left to remove, the shape under construction is discarded.
-
-    Parameters
-    ----------
-    layer : Shapes
-        Napari shapes layer
-    """
-    index = layer._moving_value[0]
-    vertices = layer._data_view.shapes[index].data
-    if len(vertices) <= 2:
-        # Only the first vertex and the vertex tracking the cursor are left, so
-        # there is no partial shape to keep. Finishing discards a shape this
-        # small, which is what Enter and Escape already do here.
-        layer._finish_drawing()
-        return
-
-    trimmed = np.delete(vertices, -2, axis=0)
-    if index == layer._data_view.staged_index:
-        layer._data_view.edit_staged(index, trimmed)
-    else:
-        layer._data_view.edit(index, trimmed)
-    layer._value = (index, len(vertices) - 2)
-    layer._moving_value = copy(layer._value)
-    # The removed vertex was the one the duplicate-click guard compares
-    # against, so forget it: clicking the same spot again must put it back.
-    layer._last_cursor_position = None
-    layer.refresh()
-
-
 def polygon_creating(layer: Shapes, event: MouseEvent) -> None:
     """Let active vertex follow cursor while drawing polygon, adding it to polygon after a certain distance.
 
@@ -540,8 +499,7 @@ def add_path_polygon(layer: Shapes, event: MouseEvent) -> None:
     """Add a path or polygon or add vertex to an existing one.
 
     When shape is not yet being created, initiates the drawing of a polygon on mouse press. Else, on subsequent mouse
-    presses, add vertex to polygon being created. A right press removes the
-    most recently placed vertex instead, as in the Labels polygon tool.
+    presses, add vertex to polygon being created.
 
     Parameters
     ----------
@@ -550,11 +508,6 @@ def add_path_polygon(layer: Shapes, event: MouseEvent) -> None:
     event : MouseEvent
         A proxy read only wrapper around a vispy mouse event.
     """
-    # on press
-    if event.button == 2:
-        if layer._is_creating:
-            remove_last_vertex_from_path(layer)
-        return
     coordinates = _creation_coordinates(layer, event)
     if layer._is_creating is False:
         # Set last cursor position to initial position of the mouse when starting to draw the shape

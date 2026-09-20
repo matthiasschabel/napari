@@ -14,6 +14,11 @@ Production assembly: `integration`. Experimental synchronization flows one way t
 
 Pirana viewer's stock floor is 0.9.0rc1. #9257 and #9364 are already present there, so its fork-only autorepeat probe and private Vectors mode subscription are retired. #9396 is not in stock 0.9.1: retain the explicit direct-mode resynchronization. The appended-vector-color workaround addresses a separate unresolved API gap. The independent pirana-colormap package may still support napari 0.8.
 
+The integration keeps its layer-list held-Delete suppression for now: it prevents repeated Delete
+from walking the selection and removing unrelated layers. Pirana-specific right-click vertex
+rollback has been removed because Pirana owns Backspace rollback and uses right-click for its ROI
+context menu.
+
 ### Open upstream PRs: retain
 
 | PR | Branch | Purpose |
@@ -57,7 +62,13 @@ Open PR branches and public dependency-retention tags are preserved. Merged bran
 
 ## Deferred Work
 
-The owner-lock API remains until pirana migrates safely. The Vectors dynamic-controls gap remains an explicit upstream design task. Product decisions for held Delete and right-click vertex rollback are recorded with the consumer simplification review.
+The owner-lock API remains until pirana migrates safely. The Vectors dynamic-controls gap remains an explicit upstream design task.
+
+The held-Delete suppression remains in the integration pending a separate ROI deletion-protection
+design. A future change may map Pirana's logical ROI lock to napari's `LayerLock.DELETION`, but it
+must preserve `layer.editable`, define how the napari lock action synchronizes with the ROI panel,
+and test layer-list notifications, selection restoration, direct controller deletion, and
+undo/redo. Do not remove the global suppression as part of that work.
 
 ## Next Steps
 
