@@ -29,8 +29,14 @@ done
 if git -C "$root" remote get-url upstream >/dev/null 2>&1; then
   log "upstream remote present"
 else
-  log "adding upstream remote (push disabled)"
+  log "adding upstream remote"
   git -C "$root" remote add upstream "$UPSTREAM_URL"
+fi
+# Checked separately so an upstream remote that already existed also loses its push URL.
+if [[ $(git -C "$root" remote get-url --push upstream) == DISABLED ]]; then
+  log "upstream push already disabled"
+else
+  log "disabling push to upstream"
   git -C "$root" remote set-url --push upstream DISABLED
 fi
 log "fetching upstream"
