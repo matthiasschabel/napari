@@ -1,12 +1,12 @@
 # Production fork branch inventory
 
 **Status:** Active
-**Last updated:** 2026-09-19
+**Last updated:** 2026-09-24
 **Scope:** napari integration, upstream topic branches, compositional experiments, and pirana consumers
 
 ## Context
 
-Integration includes upstream main through 38ab38ff6 (#9396). A merged PR is not a reason to revert its old merge: inspect the remaining source delta. Retire a compatibility path when its fix is present in every supported consumer profile.
+Integration includes upstream main through 10fa02054 (#9548), which brings in the landed #9411 and #9533. A merged PR is not a reason to revert its old merge: inspect the remaining source delta. Retire a compatibility path when its fix is present in every supported consumer profile.
 
 ## Current Decision
 
@@ -32,13 +32,11 @@ context menu.
 | [#9335](https://github.com/napari/napari/pull/9335) | `feature/vectors-feature-color-mapping-controls` | Retain pending upstream review; preserve production adaptations. |
 | [#9532](https://github.com/napari/napari/pull/9532) | `fix/dock-widget-minimum-ratchet` | Retain pending upstream review; preserve production adaptations. |
 | [#9462](https://github.com/napari/napari/pull/9462) | `fix/dock-widget-size-policy` | Retain pending upstream review; preserve production adaptations. |
-| [#9533](https://github.com/napari/napari/pull/9533) | `fix/qtviewer-prepopulated-model` | Retain pending upstream review; preserve production adaptations. |
 | [#9328](https://github.com/napari/napari/pull/9328) | `fix/settings-reset-announces-every-field` | Retain pending upstream review; preserve production adaptations. |
 | [#9441](https://github.com/napari/napari/pull/9441) | `fix/shapes-remove-selected-mid-draw` | Retain pending upstream review; preserve production adaptations. |
 | [#9394](https://github.com/napari/napari/pull/9394) | `fix/shapes-slice-key-rounding` | Retain pending upstream review; preserve production adaptations. |
 | [#9418](https://github.com/napari/napari/pull/9418) | `perf/shapes-hide-empty-subvisuals` | Retain pending upstream review; preserve production adaptations. |
 | [#9419](https://github.com/napari/napari/pull/9419) | `perf/shapes-staged-creation` | Retain pending upstream review; preserve production adaptations. |
-| [#9411](https://github.com/napari/napari/pull/9411) | `perf/skip-identity-unit-conversion` | Retain pending upstream review; preserve production adaptations. |
 
 ### Other production changes: retain
 
