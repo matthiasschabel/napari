@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Run a repro script against stock napari (upstream/main) or this integration checkout.
+#
+#   nrepro stock repro.py [args...]
+#   nrepro int   repro.py [args...]
+#   nrepro both  repro.py [args...]   # stock, then int; exit status is int's
+#   nrepro update                     # move the stock worktree to the current upstream/main
+#
+# Both trees run on the integration .venv. PYTHONPATH decides which source gets imported,
+# and each run gets a throwaway NAPARI_CONFIG so a repro can never change real settings.
+set -euo pipefail
+
+root=$(git -C "$(dirname "$(realpath "$0")")" rev-parse --show-toplevel)
+stock=${NAPARI_STOCK_DIR:-$root-stock}
+python=$root/.venv/bin/python
+
+usage() { sed -n '2,7s/^# \{0,1\}//p' "$0" >&2; exit 2; }
+
+run_in() {
+  local tree=$1; shift
+  [[ -d $tree/src/napari ]] || { echo "nrepro: no napari tree at $tree (run tools/integration/bootstrap.sh)" >&2; return 2; }
+  local cfg_dir; cfg_dir=$(mktemp -d)
+  echo "== $(git -C "$tree" log -1 --format='%h %s') [$tree]" >&2
+  local status=0
+  NAPARI_CONFIG=$cfg_dir/settings.yaml PYTHONPATH=$tree/src${PYTHONPATH:+:$PYTHONPATH} \
+    "$python" "$@" || status=$?
+  rm -rf "$cfg_dir"
+  return $status
+}
+
+[[ $# -ge 1 ]] || usage
+mode=$1; shift
+case $mode in
+  stock) run_in "$stock" "$@" ;;
+  int)   run_in "$root" "$@" ;;
+  both)
+    s=0; i=0
+    run_in "$stock" "$@" || s=$?
+    run_in "$root" "$@" || i=$?
+    echo "== exit codes: stock=$s int=$i" >&2
+    exit $i ;;
+  update)
+    git -C "$root" fetch --quiet upstream
+    git -C "$stock" checkout --quiet --detach upstream/main
+    cp "$root/src/napari/_version.py" "$stock/src/napari/_version.py"
+    echo "stock now at $(git -C "$stock" log -1 --format='%h %cs %s')" >&2 ;;
+  *) usage ;;
+esac
