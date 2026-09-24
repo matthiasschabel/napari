@@ -89,7 +89,8 @@ class Canvas(EventedModel):
                 'axes': CanvasAxesOverlay(),
                 'direction_labels': DirectionLabelsOverlay(),
             }
-        )
+        ),
+        frozen=True,
     )
     overlay_tiling: OverlayTiling = Field(
         default_factory=OverlayTiling, frozen=True
