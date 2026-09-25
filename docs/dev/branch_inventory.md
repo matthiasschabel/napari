@@ -60,7 +60,7 @@ When these merge, reconcile the integration delta rather than simply dropping it
 
 ### Other production changes: retain
 
-- Navigation owner locks, draw exemptions, active-axis recovery, and direction labels remain consumed by pirana. Open #9442 does not replace the owner-lock API; do not delete it based on that proposal.
+- Navigation owner locks, draw exemptions, active-axis recovery, and the `direction_edge_labels` helper remain consumed by pirana. The fork's `DirectionLabelsOverlay` and `viewer.direction_labels` were removed on 2026-09-25 (pirana never used them); the helper matches the upstream proposal on `feature/direction-edge-labels`. Open #9442 does not replace the owner-lock API; do not delete it based on that proposal.
 - Shapes drawing-event order, scalar shape-type assignment, lasso vertex preservation, and custom cursors remain production features/fixes.
 - Exceptional GPU colors, infinity colormap fields, NaN handling, and the selector hook remain used by pirana's colormap workflow.
 - Rendering optimizations (extent/transform/shader reuse, empty subvisual suppression, viewport culling) remain separate production patches with measured evidence. No new rendering redesign is part of this maintenance pass.

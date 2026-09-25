@@ -8,7 +8,7 @@
 
 1. Recheck the PRs in "Waiting on others" (`gh pr view <n> -R napari/napari` / `-R vispy/vispy`) for review activity.
 2. The user is reviewing draft PRs #9561–#9565 and will mark them ready themselves.
-3. The next working item is the **direction-labels decision** (below). Once the user picks a path, draft the upstream comment or issue and the pirana overlay change.
+3. **direction-labels** (below) is implemented and committed locally. Nothing is pushed or filed; the user files the issue, then decides on pushing and the PR.
 
 Read the repo's `AGENTS.md` first. Every post, PR, or comment upstream needs the user's explicit go-ahead for that specific item.
 
@@ -19,7 +19,7 @@ Rationalize the fork's napari worktrees and move finished fixes upstream as smal
 ## Waiting on the user
 
 - **#9561–#9565 drafts:** the user reviews them and marks them ready. #9563 changes the ADDED event payload, and its body says so.
-- **direction-labels path:** recommendation below; no choice made yet. An offer to draft the upstream comment and the pirana change is unanswered, so treat it as an unapproved proposal.
+- **direction-labels:** file the issue from [direction_edge_labels_issue_draft.md](direction_edge_labels_issue_draft.md); then say whether to push `feature/direction-edge-labels` and open the PR, push integration, and merge pirana's `feature/orientation-text-overlays`.
 
 ## Waiting on others
 
@@ -34,15 +34,13 @@ Rationalize the fork's napari worktrees and move finished fixes upstream as smal
 
 When #9563, #9565, or #9442/#9568 merge, reconcile integration. The biggest difference is that #9563 reports negative ADDED indices while integration reports positive ones, so check pirana's `data` listeners first (inventory, "Upstream PRs that differ from integration").
 
-## direction-labels (recommendation, not acted on)
+## direction-labels (done 2026-09-25, local only)
 
-- **Branch state:** the local `feature/direction-labels` (worktree `napari-feat/direction-labels`, `bd501244b`) is canonical: it is the fork's seven commits rebased, with the overlay ported to upstream's canvas-overlay refactor. The fork copy `origin/feature/direction-labels` is stale and holds nothing unique. `integration` ships identical code.
-- **What pirana uses:** only the helper `napari.components.direction_edge_labels`, at `pirana-gui/packages/pirana-viewer/src/pirana/viewer/image_scroller.py:1926`, with its own fallback mapping on stock napari. It draws the letters with private vispy `Text` nodes parented to `_scene_canvas`. Nothing in pirana-gui or pirana-lab uses the fork's `DirectionLabelsOverlay` or `viewer.direction_labels`.
-- **Upstream:** #9374 (jni, in napari 0.9.0) added `middle_left/center/right` canvas positions for orientation letters, as part of image-coop's OME-NGFF RFC-4 work. Its example, `examples/dev/overlays.py`, registers one custom `CanvasOverlay` per letter through the still-private `overlay_to_visual`. On #9250, brisvag said arbitrary positions and per-grid-cell overlays are not planned. Nothing upstream maps labels to edges under flips or transposes.
-- **Proposed path:**
-  1. **Pirana:** four canvas overlays at `top_center`/`bottom_center`/`middle_left`/`middle_right` in place of the private Text nodes. Pirana's floor is 0.9.0rc1, and #9374 is confirmed only in 0.9.0 final, so check the floor.
-  2. **Upstream:** propose only the helper, via a #9250 comment or a new issue tagging jni. Convert its `trans._()` strings to f-strings first (#8935 removed `trans`).
-  3. **Fork:** drop the unused overlay and `viewer.direction_labels` from integration. Updating or deleting the stale fork branch needs the user's say-so.
+The user approved the three-part plan. Each part was reviewed by Codex (gpt-6-sol) with no blocking findings.
+
+- **Upstream:** branch `feature/direction-edge-labels` (worktree `napari-feat/direction-edge-labels`), one commit on `upstream/main`. It adds only `napari.components.direction_edge_labels` and its tests, with f-strings and without `reconcile_direction_labels`. Unpushed. The issue draft is in [direction_edge_labels_issue_draft.md](direction_edge_labels_issue_draft.md); its example runs as written.
+- **Fork:** the integration commit "Drop the direction-labels overlay in favor of the upstream helper" removes `DirectionLabelsOverlay` and `viewer.direction_labels`, and syncs the helper to the upstream version. Components and vispy tests: 833 passed. Unpushed. The stale `origin/feature/direction-labels` and the local `feature/direction-labels` (worktree `napari-feat/direction-labels`) are superseded; deleting them needs the user's say-so.
+- **Pirana:** branch `feature/orientation-text-overlays` in pirana-gui. The letters are four stock `TextOverlay`s at `top_center`, `bottom_center`, `middle_left` and `middle_right`, which removes the `_scene_canvas` reach. The full `--gui` suite: 4123 passed, and the 2 `test_coordinates` failures also fail on `main`. Tested only against the pinned fork (`e33f37a6`). A `PYTHONPATH` override cannot test integration in that venv, because napari refuses the mixed install. The letters are no longer bold.
 
 ## Parked
 
