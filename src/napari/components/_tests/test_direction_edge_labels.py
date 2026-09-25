@@ -68,11 +68,15 @@ def test_depth_orientation_does_not_affect_in_plane_edges():
     assert toward == away
 
 
-def test_ndisplay_3_returns_none():
-    dims = Dims(ndim=3, ndisplay=3)
+@pytest.mark.parametrize('ndim', [2, 3])
+def test_ndisplay_3_returns_none(ndim):
+    # ndim=2 also displays exactly two axes, so this pins the ndisplay check.
+    dims = Dims(ndim=ndim, ndisplay=3)
     cam = Camera()
 
-    assert direction_edge_labels(LPS_AXIAL, dims=dims, camera=cam) is None
+    assert (
+        direction_edge_labels(LPS_AXIAL[-ndim:], dims=dims, camera=cam) is None
+    )
 
 
 @pytest.mark.parametrize(

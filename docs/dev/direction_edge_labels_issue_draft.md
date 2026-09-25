@@ -1,6 +1,6 @@
 # Upstream issue draft: direction_edge_labels
 
-**Status:** Active
+**Status:** Implemented (filed as napari#9571)
 **Last updated:** 2026-09-25
 **Scope:** proposed upstream issue for branch `feature/direction-edge-labels` (worktree `napari-feat/direction-edge-labels`)
 

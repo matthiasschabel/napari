@@ -30,6 +30,8 @@ def direction_edge_labels(
 ) -> dict[str, str] | None:
     """Which direction label faces each screen edge, for the current 2D view.
 
+    .. versionadded:: 0.10.0
+
     Parameters
     ----------
     direction_labels : sequence of (str or None, str or None) or None
@@ -47,11 +49,11 @@ def direction_edge_labels(
     Returns
     -------
     dict of str to str, or None
-        ``None`` when the mapping is undefined (the view does not display
-        exactly two axes). Otherwise a dict whose keys are a subset of
-        ``{'top', 'bottom', 'left', 'right'}`` mapping each edge to the label
-        facing it; edges whose direction is unlabeled are omitted, so the dict
-        is empty when nothing is labeled.
+        ``None`` when the mapping is undefined: ``dims.ndisplay != 2``, or
+        fewer than two axes are displayed. Otherwise a dict whose keys are a
+        subset of ``{'top', 'bottom', 'left', 'right'}`` mapping each edge to
+        the label facing it; edges whose direction is unlabeled are omitted,
+        so the dict is empty when nothing is labeled.
 
     Raises
     ------
