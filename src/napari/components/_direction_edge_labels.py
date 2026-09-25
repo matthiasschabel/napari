@@ -1,29 +1,13 @@
-"""Map per-axis direction labels to screen edges for a 2D display.
-
-This is pure geometry over the viewer model: given a label for each end of
-each world axis (opaque strings such as ``'L'``/``'R'`` or ``'anterior'``),
-work out which label faces each screen edge under the current camera. napari
-never interprets the strings, so any domain (medical LPS, a microscopy stage,
-a detector frame) uses the identical mechanism.
-
-The mapping is only defined when the world-to-screen map is a signed axis
-permutation. In napari that is a 2D view with exactly two displayed axes: the
-canvas is a ``PanZoomCamera`` with no rotation and ``camera.angles`` is unused,
-so the two displayed world axes map to the screen axes up to a sign taken from
-``camera.orientation``. For 3D (arbitrary rotation/perspective) or degenerate
-views with fewer than two displayed axes, there are no unambiguous edge labels,
-and this returns ``None`` rather than a guess.
-"""
+"""Map per-axis direction labels to the screen edges of a 2D view."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from napari.utils.camera_orientations import (
     HorizontalAxisOrientation,
     VerticalAxisOrientation,
 )
-from napari.utils.translations import trans
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -33,17 +17,13 @@ if TYPE_CHECKING:
 
 # One (negative-end, positive-end) label pair per world axis; either end (or
 # the whole pair) may be ``None`` to leave that direction unlabeled.
-DirectionLabelPair = tuple[Optional[str], Optional[str]]
+DirectionLabelPair = tuple[str | None, str | None]
 
-__all__ = [
-    'DirectionLabelPair',
-    'direction_edge_labels',
-    'reconcile_direction_labels',
-]
+__all__ = ['DirectionLabelPair', 'direction_edge_labels']
 
 
 def direction_edge_labels(
-    direction_labels: Sequence[Optional[DirectionLabelPair]] | None,
+    direction_labels: Sequence[DirectionLabelPair | None] | None,
     *,
     dims: Dims,
     camera: Camera,
@@ -139,22 +119,14 @@ def direction_edge_labels(
 
 
 def _validate_direction_labels(
-    direction_labels: Sequence[Optional[DirectionLabelPair]],
+    direction_labels: Sequence[DirectionLabelPair | None],
     ndim: int,
 ) -> None:
     """Check length and the shape/type of every entry; raise on any problem."""
     if len(direction_labels) != ndim:
         raise ValueError(
-            trans._(
-                # NB: not ``n=`` — ``trans._`` reserves ``n`` for pluralization,
-                # so a ``{n}`` placeholder crashes message construction for any
-                # count != 1 (it looks for a nonexistent plural form).
-                'direction_labels must have one entry per dimension: got '
-                '{n_labels} for ndim={ndim}.',
-                deferred=True,
-                n_labels=len(direction_labels),
-                ndim=ndim,
-            )
+            'direction_labels must have one entry per dimension: got '
+            f'{len(direction_labels)} for ndim={ndim}.'
         )
     for entry in direction_labels:
         if entry is None:
@@ -163,28 +135,19 @@ def _validate_direction_labels(
         # explicitly along with any non-(list/tuple) or wrong-length entry.
         if not isinstance(entry, (tuple, list)) or len(entry) != 2:
             raise ValueError(
-                trans._(
-                    'each direction_labels entry must be None or a '
-                    '(negative, positive) pair; got {entry!r}.',
-                    deferred=True,
-                    entry=entry,
-                )
+                'each direction_labels entry must be None or a '
+                f'(negative, positive) pair; got {entry!r}.'
             )
         for label in entry:
             if label is not None and not isinstance(label, str):
                 raise ValueError(
-                    trans._(
-                        'each direction label must be a string or None; got '
-                        '{label!r}.',
-                        deferred=True,
-                        label=label,
-                    )
+                    f'each direction label must be a string or None; got {label!r}.'
                 )
 
 
 def _place_axis(
     edges: dict[str, str],
-    entry: Optional[DirectionLabelPair],
+    entry: DirectionLabelPair | None,
     *,
     positive_edge: str,
     negative_edge: str,
@@ -197,27 +160,3 @@ def _place_axis(
         edges[negative_edge] = negative
     if positive is not None:
         edges[positive_edge] = positive
-
-
-def reconcile_direction_labels(
-    labels: Sequence[Optional[DirectionLabelPair]],
-    ndim: int,
-) -> tuple[Optional[DirectionLabelPair], ...]:
-    """Reconcile a stored direction-label tuple to ``ndim``.
-
-    ``labels`` is a *suffix* (trailing) coordinate frame: it aligns with the
-    highest-numbered world axes, so a caller may store labels for more axes than
-    are currently present. Reconcile to exactly ``ndim`` entries the same way
-    napari reindexes ``axis_labels`` when dimensionality changes -- prepend
-    ``None`` for new leading axes, keep the trailing entries when reducing.
-
-    This is meant to run at render time against a stored, *unmutated* label
-    tuple, so labels survive ``dims.ndim`` changes (layer add/remove) without a
-    stored value ever going stale. The result always has length ``ndim`` (empty
-    for ``ndim <= 0``), so ``direction_edge_labels`` can consume it directly.
-    """
-    labels = tuple(labels)
-    if len(labels) < ndim:
-        return (None,) * (ndim - len(labels)) + labels
-    # Trailing ndim entries; for ndim <= 0 this is the empty tuple.
-    return labels[len(labels) - ndim :]

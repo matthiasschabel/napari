@@ -102,7 +102,6 @@ if TYPE_CHECKING:
     from napari.components.grid import GridCanvas
     from napari.components.overlays import (
         CanvasAxesOverlay,
-        DirectionLabelsOverlay,
         ScaleBarOverlay,
         SceneAxesOverlay,
         TextOverlay,
@@ -315,10 +314,6 @@ class ViewerModel(KeymapProvider, MousemapProviderPydantic, EventedModel):
             The camera property is deprecated. Use `viewer.scene.camera` instead.
         """
         return self.scene.camera
-
-    @property
-    def direction_labels(self) -> DirectionLabelsOverlay:
-        return self.canvas.overlays.direction_labels  # type: ignore[return-value]
 
     @property
     @deprecated(
