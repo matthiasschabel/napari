@@ -4,6 +4,10 @@
 **Last updated:** 2026-09-25
 **Scope:** napari fork worktrees, open upstream napari/vispy PRs, pirana-gui orientation labels
 
+## Resume here
+
+The user is reviewing draft PRs #9561–#9565 and will mark them ready. The next working item is the direction-labels decision (see below): once the user picks a path, draft the #9250 comment or new issue and the pirana overlay change. Check the "Waiting on others" table for review activity first.
+
 ## Context
 
 The session covered five things. It rationalized the napari worktrees, removed dead ones and archived dead branches. It opened seven napari PRs and two vispy PRs, and filed a vispy issue. It split #9442 into model and GUI parts. It reviewed the direction-labels branch against upstream. Branch and PR bookkeeping lives in [branch_inventory.md](branch_inventory.md); this note holds what is unfinished, what is waiting on others, and the facts a new session would otherwise re-derive.
