@@ -1,7 +1,7 @@
 # Production fork branch inventory
 
 **Status:** Active
-**Last updated:** 2026-09-24
+**Last updated:** 2026-09-25
 **Scope:** napari integration, upstream topic branches, compositional experiments, and pirana consumers
 
 ## Context
@@ -24,7 +24,8 @@ context menu.
 | PR | Branch | Purpose |
 |---|---|---|
 | [#9407](https://github.com/napari/napari/pull/9407) | `agent/tabular-numerals-window-scope` | Retain pending upstream review; preserve production adaptations. |
-| [#9442](https://github.com/napari/napari/pull/9442) | `feature/dims-axis-lock` | Retain pending upstream review; preserve production adaptations. |
+| [#9442](https://github.com/napari/napari/pull/9442) | `feature/dims-axis-lock` | Model-only per-axis lock (split 2026-09-24 at a maintainer's request). Not the owner-lock API integration ships. |
+| [#9568](https://github.com/napari/napari/pull/9568) | `feature/dims-axis-lock-gui` | Padlock UI for #9442; stacked on it. |
 | [#9468](https://github.com/napari/napari/pull/9468) | `feature/monospace-status-readouts` | Retain pending upstream review; preserve production adaptations. |
 | [#9326](https://github.com/napari/napari/pull/9326) | `feature/playback-cycle-time` | Retain pending upstream review; preserve production adaptations. |
 | [#9275](https://github.com/napari/napari/pull/9275) | `feature/shapes-drawing-state` | Retain pending upstream review; preserve production adaptations. |
@@ -37,6 +38,25 @@ context menu.
 | [#9394](https://github.com/napari/napari/pull/9394) | `fix/shapes-slice-key-rounding` | Retain pending upstream review; preserve production adaptations. |
 | [#9418](https://github.com/napari/napari/pull/9418) | `perf/shapes-hide-empty-subvisuals` | Retain pending upstream review; preserve production adaptations. |
 | [#9419](https://github.com/napari/napari/pull/9419) | `perf/shapes-staged-creation` | Retain pending upstream review; preserve production adaptations. |
+| [#9561](https://github.com/napari/napari/pull/9561) | `fix/nan-color-fast-math` | NaN `nan_color` stopgap; superseded by vispy#2796 once napari's minimum vispy includes it. |
+| [#9562](https://github.com/napari/napari/pull/9562) | `fix/shapes-finish-drawing-emit-order` | Clear `_is_creating` before `_finish_drawing` emits. |
+| [#9563](https://github.com/napari/napari/pull/9563) | `feature/shapes-added-event-indices` | ADDED indices counted from the end, like Points; stacked on #9562. Differs from integration, see below. |
+| [#9564](https://github.com/napari/napari/pull/9564) | `fix/shapes-data-setter-scalar-shape-type` | Broadcast a scalar `shape_type` in the data setter. |
+| [#9565](https://github.com/napari/napari/pull/9565) | `fix/tiled-image-keeps-state-on-retile` | Tiled image keeps settings, GL state and filters across a retile. Differs from integration, see below. |
+
+### Upstream PRs that differ from integration
+
+When these merge, reconcile the integration delta rather than simply dropping it:
+
+- #9563 reports ADDED `data_indices` counted from the end (`(-2, -1)`), matching `Points.add`. Integration reports positive indices (`(2, 3)`). Check pirana's `data` listeners before taking the upstream form.
+- #9565 records settings and attached filters on `TiledImageNode` as they are assigned. Integration (8fa195756) reads settings back from the old tiles, and does not carry filters or survive an empty retile.
+- #9442/#9568 add `Dims.axis_locked`, which is separate from integration's owner-lock API that pirana consumes.
+
+### Related vispy work
+
+- vispy#2796: a NaN test that fast-math compilers cannot fold (`gl_DepthRange.far`). Fixes napari #8056 at the source.
+- vispy#2795: fixes `ImageVisual.bad_color`, which has raised since vispy#2663; `test_image_nan` needs it.
+- vispy#2798 (issue): CPU-scaled NaN renders a driver-dependent color.
 
 ### Other production changes: retain
 
