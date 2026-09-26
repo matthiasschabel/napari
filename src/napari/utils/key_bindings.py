@@ -474,27 +474,26 @@ class KeymapHandler:
 
         kb = _vispy2appmodel(event)
 
-        # every member must be a KeyBinding: `kb` is one, and only `__hash__` is
-        # patched onto KeyBinding, not `__eq__`, so an un-coerced member lands in
-        # the right bucket and then silently fails the equality check
-        repeatables: set[KeyBinding] = {
-            *action_manager._get_repeatable_shortcuts(self.active_keymap),
-            # navigation keys always repeat; holding one to scroll through
-            # slices is the expected interaction
-            coerce_keybinding(KeyCode.UpArrow),
-            coerce_keybinding(KeyCode.DownArrow),
-            coerce_keybinding(KeyCode.LeftArrow),
-            coerce_keybinding(KeyCode.RightArrow),
+        repeatables = {
+            *action_manager._get_repeatable_shortcuts(self.keymap_chain),
+            # Nav keys are exempt however they were bound. They must be
+            # KeyBinding, not str: the set is tested against a KeyBinding, which
+            # never compares equal to a str, so str literals here silently never
+            # matched and no key bound via bind_key() auto-repeated. See #9203.
+            *(
+                KeyBinding.from_str(key)
+                for key in ('Up', 'Down', 'Left', 'Right')
+            ),
         }
 
         if (
             event.native is not None
             and event.native.isAutoRepeat()
             and kb not in repeatables
-        ):
-            # pass if the shortcut combo is held down, unless the combo being
-            # held down is one of the autorepeatables or one of the navigation
-            # keys (helps with scrolling).
+        ) or event.key is None:
+            # pass if no key is present or if the shortcut combo is held down,
+            # unless the combo being held down is one of the autorepeatables or
+            # one of the navigation keys (helps with scrolling).
             return
 
         event.handled = self.press_key(kb)
