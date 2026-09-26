@@ -12,7 +12,7 @@ Integration includes upstream main through 10fa02054 (#9548), which brings in th
 
 Production assembly: `integration`. Experimental synchronization flows one way through `compositional-core` to `explore/compositional-data-model`. See [the model boundary](compositional_model_boundary.md).
 
-Pirana viewer's stock floor is 0.9.0rc1. #9257 and #9364 are already present there, so its fork-only autorepeat probe and private Vectors mode subscription are retired. #9396 is not in stock 0.9.1: retain the explicit direct-mode resynchronization. The appended-vector-color workaround addresses a separate unresolved API gap. The independent pirana-colormap package may still support napari 0.8.
+Pirana viewer's stock floor is 0.9.1 (raised from 0.9.0rc1 on 2026-09-26). #9257 and #9364 are already present there, so its fork-only autorepeat probe and private Vectors mode subscription are retired. #9396 is not in stock 0.9.1: retain the explicit direct-mode resynchronization. The appended-vector-color workaround addresses a separate unresolved API gap. The independent pirana-colormap package may still support napari 0.8.
 
 The integration keeps its layer-list held-Delete suppression for now: it prevents repeated Delete
 from walking the selection and removing unrelated layers. Pirana-specific right-click vertex
