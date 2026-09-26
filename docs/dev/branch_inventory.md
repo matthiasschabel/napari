@@ -1,7 +1,7 @@
 # Production fork branch inventory
 
 **Status:** Active
-**Last updated:** 2026-09-25
+**Last updated:** 2026-09-26
 **Scope:** napari integration, upstream topic branches, compositional experiments, and pirana consumers
 
 ## Context
@@ -51,6 +51,18 @@ When these merge, reconcile the integration delta rather than simply dropping it
 - #9563 reports ADDED `data_indices` counted from the end (`(-2, -1)`), matching `Points.add`. Integration reports positive indices (`(2, 3)`). Check pirana's `data` listeners before taking the upstream form.
 - #9565 records settings and attached filters on `TiledImageNode` as they are assigned. Integration (8fa195756) reads settings back from the old tiles, and does not carry filters or survive an empty retile.
 - #9442/#9568 add `Dims.axis_locked`, which is separate from integration's owner-lock API that pirana consumes.
+
+### Sync check (2026-09-26)
+
+Integration contains `upstream/main` (4b1f6dd77). Each open-PR and perf branch outside integration's history had its own changed tests run against integration. #9361 was the only feature missing, and is now merged. The remaining failures are the known generation differences:
+
+- ADDED indices: upstream's `test_polygons` expects `(-1,)` from `add_polygons`; integration reports `(0,)`. This fails the branches for #9275, #9563 and #9564 that carry upstream's test file.
+- #9561's `decode_nan_sentinel` is superseded by integration's `decode_sentinels` (`gpu-exceptional-colors`).
+- #9565, and #9442/#9568, as listed above.
+- `perf/keep-extent-cache-across-slices` and `perf/mesh-shader-reuse` test a `Mesh`-based Vectors node; integration draws Vectors with `VectorsVisual`.
+- `feature/dims-lock-flash`, `feature/dims-navigation-lock` and `feature/dims-nav-lock-draw-exempt` are earlier generations of integration's owner-lock API and were not retested.
+
+`feature/direction-labels` was deleted locally and on the fork on 2026-09-26; its tip `bd501244b` is kept at `refs/archive/2026-09-26/feature/direction-labels` (local only). Branches cut from integration before 2026-09-25 (the compositional branches, `feature/gpu-exceptional-colors`, `dev/gl-exceptional-probe`, `fix/dims-lock-active-axis`, `feature/dims-lock-flash`) still carry the removed overlay until they next take integration.
 
 ### Related vispy work
 
