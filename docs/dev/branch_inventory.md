@@ -29,7 +29,7 @@ context menu.
 | [#9468](https://github.com/napari/napari/pull/9468) | `feature/monospace-status-readouts` | Retain pending upstream review; preserve production adaptations. |
 | [#9326](https://github.com/napari/napari/pull/9326) | `feature/playback-cycle-time` | Retain pending upstream review; preserve production adaptations. |
 | [#9275](https://github.com/napari/napari/pull/9275) | `feature/shapes-drawing-state` | Retain pending upstream review; preserve production adaptations. |
-| [#9361](https://github.com/napari/napari/pull/9361) | `feature/uniform-key-autorepeat` | Retain pending upstream review; preserve production adaptations. |
+| [#9361](https://github.com/napari/napari/pull/9361) | `feature/uniform-key-autorepeat` | **Generation gap.** The PR head (`73d1181fb`) is a redesign: auto-repeat by default, suppressed only for pending hold-semantics bindings, `repeatable` deprecated, `_get_repeatable_shortcuts` removed. Integration and the local branch carry the earlier opt-in-preserving generation (`b0850becc`). Decide whether integration adopts the redesign before it merges upstream; pirana's key handling sees the policy change either way. |
 | [#9335](https://github.com/napari/napari/pull/9335) | `feature/vectors-feature-color-mapping-controls` | Retain pending upstream review; preserve production adaptations. |
 | [#9532](https://github.com/napari/napari/pull/9532) | `fix/dock-widget-minimum-ratchet` | Retain pending upstream review; preserve production adaptations. |
 | [#9462](https://github.com/napari/napari/pull/9462) | `fix/dock-widget-size-policy` | Retain pending upstream review; preserve production adaptations. |
@@ -48,13 +48,13 @@ context menu.
 
 When these merge, reconcile the integration delta rather than simply dropping it:
 
-- #9563 reports ADDED `data_indices` counted from the end (`(-2, -1)`), matching `Points.add`. Integration reports positive indices (`(2, 3)`). Check pirana's `data` listeners before taking the upstream form.
+- #9563 reports ADDED `data_indices` counted from the end (`(-2, -1)`), matching `Points.add`. Integration reports positive indices (`(2, 3)`). Pirana is indifferent: its ROI controller ignores ADDED indices and normalizes negative indices for other actions (checked 2026-09-26), so take whichever form upstream accepts.
 - #9565 records settings and attached filters on `TiledImageNode` as they are assigned. Integration (8fa195756) reads settings back from the old tiles, and does not carry filters or survive an empty retile.
 - #9442/#9568 add `Dims.axis_locked`, which is separate from integration's owner-lock API that pirana consumes.
 
 ### Sync check (2026-09-26)
 
-Integration contains `upstream/main` (4b1f6dd77). Each open-PR and perf branch outside integration's history had its own changed tests run against integration. #9361 was the only feature missing, and is now merged. The remaining failures are the known generation differences:
+Integration contains `upstream/main` (4b1f6dd77). Each open-PR and perf branch outside integration's history had its own changed tests run against integration. #9361 was the only feature missing; its earlier generation (`b0850becc`, opt-in model kept) is now merged. The PR as open upstream (`73d1181fb`) is a different design (repeat by default); see the table above. QA review of the merge on 2026-09-26: the `KeyBinding` coercion and identity-based dispatch check are sound, the removed `event.key is None` clause is redundant with the guard at the top of `on_key_press`, the `action_manager` -> `key_bindings` import is acyclic because `key_bindings` imports `action_manager` lazily, and `utils/_tests` + `events/_tests` + `_tests/test_key_bindings.py` pass (698 passed, 1 skipped) once the fork environment is re-synced for the new `napari-resources` dependency. The remaining failures are the known generation differences:
 
 - ADDED indices: upstream's `test_polygons` expects `(-1,)` from `add_polygons`; integration reports `(0,)`. This fails the branches for #9275, #9563 and #9564 that carry upstream's test file.
 - #9561's `decode_nan_sentinel` is superseded by integration's `decode_sentinels` (`gpu-exceptional-colors`).
