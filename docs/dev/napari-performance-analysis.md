@@ -241,8 +241,8 @@ the overlay and its tests to `viewer.scene.camera` clears them: the VisPy suite
 is 210 passed, 19 skipped, and the components suite is 567 passed. The
 `feature/direction-labels` branch itself is unaffected because it is based on a
 `main` that predates the `Scene` refactor (#9323). Both are now gone: integration
-dropped the overlay on 2026-09-25, and only the `direction_edge_labels` helper
-went upstream (#9572).
+dropped the overlay on 2026-09-25, and the `direction_edge_labels` helper it
+proposed upstream (#9572) was declined and removed on 2026-09-27.
 
 ### P2-1 transparent stream status
 

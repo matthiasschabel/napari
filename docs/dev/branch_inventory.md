@@ -72,7 +72,7 @@ Integration contains `upstream/main` (4b1f6dd77). Each open-PR and perf branch o
 
 ### Other production changes: retain
 
-- Navigation owner locks, draw exemptions, active-axis recovery, and the `direction_edge_labels` helper remain consumed by pirana. The fork's `DirectionLabelsOverlay` and `viewer.direction_labels` were removed on 2026-09-25 (pirana never used them); the helper matches the upstream proposal on `feature/direction-edge-labels`. Open #9442 does not replace the owner-lock API; do not delete it based on that proposal.
+- Navigation owner locks, draw exemptions, and active-axis recovery remain consumed by pirana. The fork's `DirectionLabelsOverlay` and `viewer.direction_labels` were removed on 2026-09-25 (pirana never used them). The `direction_edge_labels` helper was removed on 2026-09-27 after upstream declined it (#9571, #9572) as plugin territory; pirana now maps the labels itself in `pirana.viewer._orientation`. Open #9442 does not replace the owner-lock API; do not delete it based on that proposal.
 - Shapes drawing-event order, scalar shape-type assignment, lasso vertex preservation, and custom cursors remain production features/fixes.
 - Exceptional GPU colors, infinity colormap fields, NaN handling, and the selector hook remain used by pirana's colormap workflow.
 - Rendering optimizations (extent/transform/shader reuse, empty subvisual suppression, viewport culling) remain separate production patches with measured evidence. No new rendering redesign is part of this maintenance pass.

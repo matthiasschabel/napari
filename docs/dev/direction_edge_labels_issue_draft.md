@@ -1,7 +1,7 @@
 # Upstream issue draft: direction_edge_labels
 
-**Status:** Implemented (filed as napari#9571)
-**Last updated:** 2026-09-25
+**Status:** Abandoned (filed as napari#9571; declined 2026-09-27 as plugin territory, and PR #9572 closed. napari-ome-zarr is building the equivalent for OME-NGFF RFC-4. pirana maps the labels in `pirana.viewer._orientation`, and integration no longer carries the helper.)
+**Last updated:** 2026-09-27
 **Scope:** proposed upstream issue for branch `feature/direction-edge-labels` (worktree `napari-feat/direction-edge-labels`)
 
 Paste-ready; the user files it. Reviewed by Codex (gpt-6-sol).
