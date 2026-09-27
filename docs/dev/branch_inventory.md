@@ -62,7 +62,7 @@ Integration contains `upstream/main` (4b1f6dd77). Each open-PR and perf branch o
 - `perf/keep-extent-cache-across-slices` and `perf/mesh-shader-reuse` test a `Mesh`-based Vectors node; integration draws Vectors with `VectorsVisual`.
 - `feature/dims-lock-flash`, `feature/dims-navigation-lock` and `feature/dims-nav-lock-draw-exempt` are earlier generations of integration's owner-lock API and were not retested.
 
-`feature/direction-labels` was deleted locally and on the fork on 2026-09-26; its tip `bd501244b` is kept at `refs/archive/2026-09-26/feature/direction-labels` (local only). Branches cut from integration before 2026-09-25 (the compositional branches, `feature/gpu-exceptional-colors`, `dev/gl-exceptional-probe`, `fix/dims-lock-active-axis`, `feature/dims-lock-flash`) still carry the removed overlay until they next take integration.
+`feature/direction-labels` was deleted locally and on the fork on 2026-09-26; its tip `bd501244b` is kept at `refs/archive/2026-09-26/feature/direction-labels` (local only). `feature/direction-edge-labels` (PR #9572, declined) followed on 2026-09-27: branch, fork branch and worktree deleted, tip `0990782b4` kept at `refs/archive/2026-09-27/feature/direction-edge-labels` (local only) and at `refs/pull/9572/head` upstream. Branches cut from integration before 2026-09-25 (the compositional branches, `feature/gpu-exceptional-colors`, `dev/gl-exceptional-probe`, `fix/dims-lock-active-axis`, `feature/dims-lock-flash`) still carry the removed overlay until they next take integration.
 
 ### Related vispy work
 
