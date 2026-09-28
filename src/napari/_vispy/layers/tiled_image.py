@@ -64,6 +64,9 @@ class TiledImageNode(Compound):
         self.offsets: list[tuple[int, int]] = []
         self.tile_size = tile_size
         self.data: npt.ArrayLike | None = None
+        self._pass_through: dict[str, Any] = {}
+        self._gl_state: tuple[tuple, dict] | None = None
+        self._filters_attached: list[Any] = []
         super().__init__([])
         self.set_data(data)
 
@@ -110,24 +113,9 @@ class TiledImageNode(Compound):
             for ch, (_, dat) in zip(self.adopted_children, tiles, strict=True):
                 ch.set_data(dat)
         else:
-            # Pass-through attributes are forwarded to the children that exist
-            # at assignment time, and this branch replaces all of them. Without
-            # carrying the current values over, a reshape that changes the tile
-            # count silently resets the colormap, contrast limits, gamma, and
-            # interpolation to vispy's defaults.
-            # Read from a child, not from self. These names are forwarded to
-            # the children and never stored on the node, but `opacity` is also
-            # a real VisualNode property, so `getattr(self, 'opacity')` returns
-            # the node's own untouched default rather than what was assigned.
-            carried = (
-                {
-                    name: getattr(self.adopted_children[0], name)
-                    for name in PASS_THROUGH_ATTRIBUTES
-                }
-                if self.adopted_children
-                else {}
-            )
             for child in self.adopted_children:
+                for filt in self._filters_attached:
+                    child.detach(filt, child)
                 child.parent = None
             self._subvisuals: list[BaseVisual] = []
             self.adopted_children = [
@@ -143,11 +131,25 @@ class TiledImageNode(Compound):
             ):
                 ch.transform = STTransform(translate=offset + (0,))
                 self.add_subvisual(ch)
-            for name, value in carried.items():
-                if value is not None:
-                    setattr(self, name, value)
+            for name, value in self._pass_through.items():
+                setattr(self, name, value)
+            for filt in self._filters_attached:
+                for child in self.adopted_children:
+                    child.attach(filt, child)
+            if self._gl_state is not None:
+                args, kwargs = self._gl_state
+                self.set_gl_state(*args, **kwargs)
+
+    def attach(self, filt: Any, view: Any = None) -> None:
+        self._filters_attached.append(filt)
+        super().attach(filt, view)
+
+    def detach(self, filt: Any, view: Any = None) -> None:
+        self._filters_attached.remove(filt)
+        super().detach(filt, view)
 
     def set_gl_state(self, *args: Any, **kwargs: Any) -> None:
+        self._gl_state = (args, kwargs)
         for child in self.adopted_children:
             child.set_gl_state(*args, **kwargs)
 
@@ -160,6 +162,7 @@ class TiledImageNode(Compound):
 
     def __setattr__(self, name: str, value: Any) -> None:
         if name in PASS_THROUGH_ATTRIBUTES:
+            self._pass_through[name] = value
             for child in self.adopted_children:
                 setattr(child, name, value)
         else:
