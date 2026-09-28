@@ -42,14 +42,14 @@ context menu.
 | [#9562](https://github.com/napari/napari/pull/9562) | `fix/shapes-finish-drawing-emit-order` | Clear `_is_creating` before `_finish_drawing` emits. |
 | [#9563](https://github.com/napari/napari/pull/9563) | `feature/shapes-added-event-indices` | ADDED indices counted from the end, like Points; stacked on #9562. Differs from integration, see below. |
 | [#9564](https://github.com/napari/napari/pull/9564) | `fix/shapes-data-setter-scalar-shape-type` | Broadcast a scalar `shape_type` in the data setter. |
-| [#9565](https://github.com/napari/napari/pull/9565) | `fix/tiled-image-keeps-state-on-retile` | Tiled image keeps settings, GL state and filters across a retile. Differs from integration, see below. |
+| [#9565](https://github.com/napari/napari/pull/9565) | `fix/tiled-image-keeps-state-on-retile` | Tiled image keeps settings, GL state and filters across a retile. Integration carries this exact change. |
 
 ### Upstream PRs that differ from integration
 
 When these merge, reconcile the integration delta rather than simply dropping it:
 
 - #9563 reports ADDED `data_indices` counted from the end (`(-2, -1)`), matching `Points.add`. Integration reports positive indices (`(2, 3)`). Pirana is indifferent: its ROI controller ignores ADDED indices and normalizes negative indices for other actions (checked 2026-09-26), so take whichever form upstream accepts.
-- #9565 records settings and attached filters on `TiledImageNode` as they are assigned. Integration (8fa195756) reads settings back from the old tiles, and does not carry filters or survive an empty retile.
+- #9565: integration adopted the PR's implementation verbatim on 2026-09-27 (d47c2b4e1), replacing its own read-back (8fa195756). Nothing to reconcile when it merges.
 - #9442/#9568 add `Dims.axis_locked`, which is separate from integration's owner-lock API that pirana consumes.
 
 ### Sync check (2026-09-26)
@@ -58,7 +58,7 @@ Integration contains `upstream/main` (4b1f6dd77). Each open-PR and perf branch o
 
 - ADDED indices: upstream's `test_polygons` expects `(-1,)` from `add_polygons`; integration reports `(0,)`. This fails the branches for #9275, #9563 and #9564 that carry upstream's test file.
 - #9561's `decode_nan_sentinel` is superseded by integration's `decode_sentinels` (`gpu-exceptional-colors`).
-- #9565, and #9442/#9568, as listed above.
+- #9442/#9568, as listed above. (#9565 was one until integration adopted the PR on 2026-09-27.)
 - `perf/keep-extent-cache-across-slices` and `perf/mesh-shader-reuse` test a `Mesh`-based Vectors node; integration draws Vectors with `VectorsVisual`.
 - `feature/dims-lock-flash`, `feature/dims-navigation-lock` and `feature/dims-nav-lock-draw-exempt` are earlier generations of integration's owner-lock API and were not retested.
 
