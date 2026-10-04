@@ -32,7 +32,7 @@ context menu.
 | [#9361](https://github.com/napari/napari/pull/9361) | `feature/uniform-key-autorepeat` | Integration carries the PR head (`73d1181fb`, repeat by default; `repeatable` deprecated and ignored) since 2026-09-26, after reverting the earlier opt-in-preserving generation (`b0850becc`). Owner rule: where a local fix and an open PR overlap, the PR takes precedence. |
 | [#9335](https://github.com/napari/napari/pull/9335) | `feature/vectors-feature-color-mapping-controls` | Retain pending upstream review; preserve production adaptations. |
 | [#9532](https://github.com/napari/napari/pull/9532) | `fix/dock-widget-minimum-ratchet` | Retain pending upstream review; preserve production adaptations. |
-| [#9462](https://github.com/napari/napari/pull/9462) | `fix/dock-widget-size-policy` | Retain pending upstream review; preserve production adaptations. |
+| [#9462](https://github.com/napari/napari/pull/9462) | `fix/dock-widget-size-policy` | Integration carries the PR head verbatim again since 2026-10-04 (it was lost when #9484's revert merged in via e33f37a6a). The dock file differs from the PR head only by #9532's minimum-shrink carry. |
 | [#9328](https://github.com/napari/napari/pull/9328) | `fix/settings-reset-announces-every-field` | Retain pending upstream review; preserve production adaptations. |
 | [#9441](https://github.com/napari/napari/pull/9441) | `fix/shapes-remove-selected-mid-draw` | Retain pending upstream review; preserve production adaptations. |
 | [#9394](https://github.com/napari/napari/pull/9394) | `fix/shapes-slice-key-rounding` | Retain pending upstream review; preserve production adaptations. |
