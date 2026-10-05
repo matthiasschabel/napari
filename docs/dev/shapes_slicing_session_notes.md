@@ -1,9 +1,13 @@
 # Shapes and slicing: where this work stands
 
 **Status:** Active
-**Last updated:** 2026-08-25
+**Last updated:** 2026-10-05
 **Scope:** Entry point for the napari#9207 work and everything it pulled in. Read this first;
 the detail lives in the four notes linked below.
+
+**2026-10-05: design agreed with brisvag; the active plan is `shapes_draw_pause_plan.md`.**
+Where this note or the design note disagree with it (the color cue as a later PR, "continue the
+original shape" as an open question, a single PR), the plan wins.
 
 ## How we got here
 

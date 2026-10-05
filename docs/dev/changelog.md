@@ -4,6 +4,21 @@ Maintainer-facing record of fixes carried in this fork. Design rationale for the
 exceptional-value work lives in `docs/dev/exceptional_rendering/README.md` and, more fully,
 in `cmap/docs/dev/mcslab/napari_exceptional_rendering_plan.md`.
 
+## [2026-10-05] — Anchor off-slice Shapes vertices to the slice where the draw started
+
+- **Problem**: napari#9207. Changing slice mid-draw gave new vertices the current slice's
+  coordinates, so the shape spanned slices and rendered on none. PR A (napari#9636) pauses the
+  draw off-slice; this follow-up lets polygon, polyline, path and lasso drawing continue there.
+- **Resolution**: while a draw is open, `ShapeList.edit` sets the edited shape's non-displayed
+  coordinates to those of its first vertex, covering clicks, the cursor-following vertex,
+  automatic path/lasso vertices and the finish-time conversion. Off-slice the shape keeps the
+  dashed outline, is excluded from picking, and the status bar says where vertices go.
+  Rectangle, ellipse and line drags still pause off-slice; a displayed-axis change still pauses
+  everything. Branch `feature/shapes-draw-anchor`, stacked on napari#9636; not on `integration`.
+- **Files affected**: `src/napari/layers/shapes/{shapes,_shape_list}.py`,
+  `src/napari/layers/shapes/_tests/test_shapes_mouse_bindings.py`.
+- **Reviewed by**: Codex (`gpt-6-astra`, high); Claude Code Opus 5.5 (`claude-opus-5-5`, QA review).
+
 ## [2026-08-26] — Keep operation cursors semantic and make contour teardown deterministic
 
 - **Problem**: the first operation-cursor revision assigned pointer-shaped add/remove cursors to

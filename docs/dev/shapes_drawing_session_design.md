@@ -1,7 +1,9 @@
 # In-progress Shapes state across slice changes
 
 **Status:** Active
-**Last updated:** 2026-08-25
+**Last updated:** 2026-10-05
+**Superseded in part (2026-10-05):** the PR split, the cue and the open questions are settled in
+`shapes_draw_pause_plan.md`. This note stays the evidence base.
 **Scope:** `Shapes` creation interaction, `ShapeList` slice filtering, the VisPy Shapes adapter. Supersedes the navigation-lock approach to napari#9207 for the *default* behavior.
 
 Refined against a codex critic pass (log:
