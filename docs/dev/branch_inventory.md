@@ -1,7 +1,7 @@
 # Production fork branch inventory
 
 **Status:** Active
-**Last updated:** 2026-09-26
+**Last updated:** 2026-10-06
 **Scope:** napari integration, upstream topic branches, compositional experiments, and pirana consumers
 
 ## Context
@@ -27,6 +27,7 @@ context menu.
 | [#9442](https://github.com/napari/napari/pull/9442) | `feature/dims-axis-lock` | Model-only per-axis lock (split 2026-09-24 at a maintainer's request). Not the owner-lock API integration ships. |
 | [#9568](https://github.com/napari/napari/pull/9568) | `feature/dims-axis-lock-gui` | Padlock UI for #9442; stacked on it. |
 | [#9468](https://github.com/napari/napari/pull/9468) | `feature/monospace-status-readouts` | Retain pending upstream review; preserve production adaptations. |
+| [#9645](https://github.com/napari/napari/pull/9645) | `fix/tnum-keep-class-fonts` | Integration carries the PR head (`ddee96e16`) since 2026-10-06: app-level `tnum` through `QGuiApplication.setFont` plus Qt's per-class fonts. Integration still has the pre-merge #9407 status-bar loop, not the merged upstream version. |
 | [#9326](https://github.com/napari/napari/pull/9326) | `feature/playback-cycle-time` | Retain pending upstream review; preserve production adaptations. |
 | [#9275](https://github.com/napari/napari/pull/9275) | `feature/shapes-drawing-state` | Retain pending upstream review; preserve production adaptations. |
 | [#9361](https://github.com/napari/napari/pull/9361) | `feature/uniform-key-autorepeat` | Integration carries the PR head (`73d1181fb`, repeat by default; `repeatable` deprecated and ignored) since 2026-09-26, after reverting the earlier opt-in-preserving generation (`b0850becc`). Owner rule: where a local fix and an open PR overlap, the PR takes precedence. |
