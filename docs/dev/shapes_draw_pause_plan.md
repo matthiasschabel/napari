@@ -1,7 +1,7 @@
 # Shapes: pausing an in-progress draw across slice and axis changes
 
 **Status:** Active
-**Last updated:** 2026-10-05
+**Last updated:** 2026-10-06
 **Scope:** napari#9207. Two upstream PRs: A (visible pause) and B (anchored editing, stacked on A).
 Supersedes the PR plan in `shapes_drawing_session_design.md` ("The off-slice cue" and
 "Next steps"); that note remains the evidence base.
@@ -90,6 +90,32 @@ Draft napari#9639 (2026-10-05): `63b8a1f37` on `fix/shapes-rectangle-slice-key` 
 `Ellipse` truncates too but rounds its bounding box first, so it was already correct and is left
 alone. Separate tiny upstream defect found: picking an ellipse exactly at its center misses (fan
 triangulation vertex). Not filed.
+
+## Porting into `integration` (pirana)
+
+Agreed 2026-10-06. Port all four PRs (#9636-#9639) into `integration` by hand, onto its richer
+creation code (`_creation_anchor`, `edit_staged`), not by merging the PR branches.
+
+- Remove the draw-time navigation lock (`ViewerModel._on_layer_drawing_started`,
+  `_draw_lock_exempt`, `_reassert_draw_lock`, the `_toggle_ndisplay` guard tied to it). Keep the
+  per-axis padlock and `Dims.lock_navigation` itself, which pirana uses.
+- Anchoring must cover `edit_staged` as well as `edit`.
+- **Private switch** on `Shapes` choosing what click-built shapes do off-slice: extend on the
+  original slice (#9638, default) or pause (#9636 behavior). Pirana sets "pause": its ROIs feed
+  measurements, so a vertex placed while looking at another slice is a silent error. Raise it
+  upstream on #9638 as a question; make it public only if a maintainer agrees.
+
+Pirana follow-ups:
+
+1. `roi_panel` overrides the viewer cursor with its add/remove cursors while a contour tool is
+   armed; it must leave napari's `forbidden` cursor alone while a draw is paused.
+2. Relax pirana's draw-time freeze (`freeze_navigation`, `InteractionPolicy` construction gate) so
+   navigation works mid-draw, with the switch set to pause.
+3. Integration tests for a slice change mid-draw: in-flight vertex history and Backspace, finish,
+   leaving ROI mode.
+4. Advance pirana-gui's `dev-fork` rev, pirana-lab's `NAPARI_METADATA_COMMIT` and both `uv.lock`
+   together.
+5. `roi_panel._discard_any_draw_in_flight` docstring describes the mode-setter order #9637 fixes.
 
 ## Alternatives Considered
 
