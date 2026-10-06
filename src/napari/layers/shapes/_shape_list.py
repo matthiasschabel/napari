@@ -429,6 +429,8 @@ class ShapeList:
         self._ndisplay = ndisplay
         self.shapes: list[Shape] = []
         self._displayed = np.array([])
+        self._displayed_override_index: int | None = None
+        self._displayed_override = True
         self._slice_key = np.array([])
         self.displayed_vertices = np.array([], dtype=CoordinateDtype)
         self.displayed_vertices_to_shape_num = np.array([], dtype=IndexDtype)
@@ -898,8 +900,14 @@ class ShapeList:
             )
         else:
             self._displayed = np.array([])
+        if self._displayed_override_index is not None:
+            self._displayed[self._displayed_override_index] = (
+                self._displayed_override
+            )
         disp_indices: IndexArray = np.nonzero(self._displayed)[0]  # pyrefly: ignore [bad-assignment]
 
+        # The staged shape is rendered separately and has no aggregate ranges.
+        disp_indices = disp_indices[disp_indices != self._staged_index]
         z_order = self._mesh.triangles_z_order
 
         triangle_ranges: IndexArray | slice
@@ -1600,6 +1608,7 @@ class ShapeList:
                 edge_width=cur_shape.edge_width,
                 z_index=cur_shape.z_index,
                 dims_order=cur_shape.dims_order,
+                ndisplay=cur_shape.ndisplay,
             )
             self.shapes[index] = shape
         else:
@@ -1725,7 +1734,10 @@ class ShapeList:
             if self.shapes[index].dims_order != dims_order:
                 shape = self.shapes[index]
                 shape.dims_order = dims_order
-                self.update(index)
+                if index == self._staged_index:
+                    self._clear_cache()
+                else:
+                    self.update(index)
         self._update_z_order()
 
     def update_z_index(self, index, z_index):
@@ -2037,7 +2049,7 @@ class ShapeList:
     ) -> np.ndarray[tuple[int], np.dtype[IndexDtype]]:
         return np.array([s[0] for s in self._visible_shapes])
 
-    def inside(self, coord):
+    def inside(self, coord, exclude=None):
         """Determines if any shape at given coord by looking inside triangle
         meshes. Looks only at displayed shapes
 
@@ -2045,6 +2057,8 @@ class ShapeList:
         ----------
         coord : sequence of float
             Image coordinates to check if any shapes are at.
+        exclude : int | None
+            Index of a shape to omit from hit testing.
 
         Returns
         -------
@@ -2059,6 +2073,8 @@ class ShapeList:
             (bounding_boxes[0] <= coord) * (bounding_boxes[1] >= coord),
             axis=1,
         )
+        if exclude is not None:
+            in_bbox &= self._visible_shapes_indices != exclude
         inside_indices = np.flatnonzero(in_bbox)
         if inside_indices.size == 0:
             return None

@@ -93,13 +93,21 @@ triangulation vertex). Not filed.
 
 ## Porting into `integration` (pirana)
 
-Agreed 2026-10-06. Port all four PRs (#9636-#9639) into `integration` by hand, onto its richer
-creation code (`_creation_anchor`, `edit_staged`), not by merging the PR branches.
+Implemented in the integration port worktree on 2026-10-06, pending local review. All four
+PRs (#9636-#9639) are adapted to the existing creation code, without merging PR branches.
 
-- Remove the draw-time navigation lock (`ViewerModel._on_layer_drawing_started`,
-  `_draw_lock_exempt`, `_reassert_draw_lock`, the `_toggle_ndisplay` guard tied to it). Keep the
-  per-axis padlock and `Dims.lock_navigation` itself, which pirana uses.
-- Anchoring must cover `edit_staged` as well as `edit`.
+- Removed the viewer's draw-time navigation lock and its lifecycle wiring. Kept the per-axis
+  padlock, `Dims.lock_navigation` / `unlock_navigation`, and the generic `_toggle_ndisplay`
+  guard for application-owned locks. Shapes still emits its drawing lifecycle events.
+- `_creation_coordinates` remains the single geometry anchor for clicks, cursor-following,
+  and automatic vertices, before either `edit` or `edit_staged`. Axis changes preserve it.
+- Staged draws no longer finish on axis-order changes. (Staging needs a layer with no
+  non-displayed axes, so the staged slice-change handling is defensive.) Their aggregate ranges remain empty
+  during slicing, and their visual observes the displayed mask. The existing restriction to
+  staging draws without non-displayed layer axes remains; this port does not broaden staging.
+- Type conversion in `edit` now preserves `ndisplay`; `edit_staged` already did. Removal
+  finishes both staged and ordinary draws before indices shift. Mode changes finish with the
+  old mode, and rectangle slice keys round like the other shape types.
 - **Private switch** on `Shapes` choosing what click-built shapes do off-slice: extend on the
   original slice (#9638, default) or pause (#9636 behavior). Pirana sets "pause": its ROIs feed
   measurements, so a vertex placed while looking at another slice is a silent error. Raise it
@@ -127,8 +135,12 @@ Pirana follow-ups:
 
 ## Deferred Work
 
-- Downstream `integration` still carries the draw-time navigation lock
-  (`ViewerModel._on_layer_drawing_started`); remove it or move it to the app once A lands.
+- Pirana must still relax its own navigation freeze and select the private pause policy.
+- Qt viewer validation needs a display-capable environment: the worktree run passed all
+  Shapes/component tests but stopped at five Qt setup errors in VisPy's macOS DPI probe
+  (zero physical screen size). Final Shapes/component plus visual-mesh regression run:
+  1,399 passed, 24 skipped. Ruff formatting passes; lint reports three duplicate lasso
+  test definitions already present in the base commit.
 - napari#9206 (open) rewrites the creation path; PR B must be checked against it.
 
 ## Next Steps

@@ -31,35 +31,7 @@ if TYPE_CHECKING:
 def _creation_coordinates(
     layer: Shapes, event: NapariMouseEvent
 ) -> npt.NDArray:
-    """Data coordinates for an in-progress vertex, pinned to the draw's origin slice.
-
-    While a shape is being created, the in-plane (displayed) axes track the
-    cursor as usual, but the out-of-plane (not-displayed) axes are held at the
-    values captured when the first vertex was placed. This keeps every vertex on
-    the shape's origin slice as the *slice point* of a not-displayed axis moves
-    (e.g. stepping a navigable/exempt axis mid-draw), so a shape cannot acquire
-    vertices on different slice indices (napari #9207).
-
-    Scope: this guards slice-*point* changes only. It does not make anchoring
-    valid across a *partition* change -- reordering axes (``Dims.order``) or
-    toggling 2D/3D (``Dims.ndisplay``) mid-draw changes *which* axes are
-    displayed, leaving the captured anchor keyed to the old axes. In a viewer
-    those routes are blocked while a shape is being created, because the layer
-    takes the Dims navigation lock (with ``lock_order=True``) for the duration
-    of the draw (see ``ViewerModel._on_layer_drawing_started``). The anchor is
-    the geometry-level backstop for the slice-point case and for standalone
-    layers not wired to a Dims lock; it does not by itself cover partitions.
-
-    The anchor is captured on the first call of a new draw -- ``_is_creating`` is
-    still ``False`` at the first vertex of every shape type and flips ``True``
-    immediately after -- and applied on every subsequent call.
-
-    This fixes the *geometry* (vertices never span slices). The *interaction* of
-    navigating an exempt axis mid-draw is fully smooth only for click-based
-    drawing: a real slice change clears ``selected_data``, which stalls the
-    drag-follow of a held-button draw until napari preserves the in-progress
-    selection across a reslice (gh #9059). Geometry stays pinned in both cases.
-    """
+    """Return cursor coordinates anchored to the slice where drawing started."""
     coordinates = layer.world_to_data(event.position)
     not_displayed = layer._slice_input.not_displayed
     if not layer._is_creating:
@@ -68,20 +40,12 @@ def _creation_coordinates(
             axis: float(coordinates[axis]) for axis in not_displayed
         }
         return coordinates
-    if layer._creation_anchor:
-        if set(layer._creation_anchor) == set(not_displayed):
-            coordinates = np.array(coordinates, dtype=float)
-            for axis, value in layer._creation_anchor.items():
-                coordinates[axis] = value
-        else:
-            # A partition change (order/ndisplay) reshaped which axes are
-            # displayed, so the anchor is keyed to the old axes; applying it
-            # would overwrite a now-displayed axis. Invalidate it -- correctness
-            # degrades to pre-anchor behavior rather than corrupting geometry.
-            # In a viewer the draw holds the navigation lock (lock_order=True),
-            # so this branch is only reached when nothing engages that lock
-            # (e.g. a standalone layer driven directly in a test).
-            layer._creation_anchor = {}
+    if layer._creation_anchor and set(layer._creation_anchor) == set(
+        not_displayed
+    ):
+        coordinates = np.array(coordinates, dtype=float)
+        for axis, value in layer._creation_anchor.items():
+            coordinates[axis] = value
     return coordinates
 
 
@@ -324,9 +288,10 @@ def _add_line_rectangle_ellipse(
     layer._aspect_ratio = 1
     # Start drawing rectangle / ellipse / line
     layer.add(data, shape_type=shape_type, gui=True)
-    layer.selected_data = {layer.nshapes - 1}
     layer._value = (layer.nshapes - 1, 4)
     layer._moving_value = copy(layer._value)
+    layer._start_drawing()
+    layer.selected_data = {layer.nshapes - 1}
     layer.refresh()
     yield
 
@@ -378,6 +343,7 @@ def initiate_polygon_draw(
     layer.add(data, shape_type='path', gui=True)
     layer._value = (layer.nshapes - 1, 1)
     layer._moving_value = copy(layer._value)
+    layer._start_drawing()
     layer.selected_data = Selection({layer.nshapes - 1})
 
 
@@ -397,6 +363,8 @@ def add_path_polygon_lasso(
         A proxy read only wrapper around a vispy mouse event.
     """
     # on press
+    if layer._drawing_paused:
+        return
     coordinates = _creation_coordinates(layer, event)
     if layer._is_creating is False:
         # Set last cursor position to initial position of the mouse when starting to draw the shape
@@ -478,7 +446,7 @@ def polygon_creating(layer: Shapes, event: MouseEvent) -> None:
     event : MouseEvent
         A proxy read only wrapper around a vispy mouse event.
     """
-    if layer._is_creating:
+    if layer._is_creating and not layer._drawing_paused:
         coordinates = _creation_coordinates(layer, event)
         move_active_vertex_under_cursor(layer, coordinates)
 
@@ -508,6 +476,8 @@ def add_path_polygon(layer: Shapes, event: MouseEvent) -> None:
     event : MouseEvent
         A proxy read only wrapper around a vispy mouse event.
     """
+    if layer._drawing_paused:
+        return
     coordinates = _creation_coordinates(layer, event)
     if layer._is_creating is False:
         # Set last cursor position to initial position of the mouse when starting to draw the shape
@@ -995,7 +965,7 @@ def _move_active_element_under_cursor(
         Position of mouse cursor in data coordinates.
     """
     # If nothing selected return
-    if len(layer.selected_data) == 0:
+    if len(layer.selected_data) == 0 or layer._drawing_paused:
         return
 
     vertex = layer._moving_value[1]

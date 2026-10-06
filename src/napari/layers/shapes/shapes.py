@@ -4,6 +4,7 @@ import warnings
 from collections.abc import Callable, Collection, Iterable, Sized
 from contextlib import contextmanager
 from copy import copy, deepcopy
+from itertools import pairwise
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
@@ -594,9 +595,14 @@ class Shapes(Layer):
         self._drag_box = None
         self._drag_box_stored = None
         self._private_is_creating = False
+        self._drawing_axes: frozenset[int] | None = None
+        self._drawing_slice_key: np.ndarray | None = None
+        self._drawing_help: str | None = None
+        # Click-built shapes extend on their original slice; apps may choose 'pause'.
+        self._off_slice_drawing = 'extend'
         # Out-of-plane (not-displayed) data coordinates captured when a draw
         # begins, so every vertex of an in-progress shape stays pinned to its
-        # origin slice even if a navigable (exempt) axis is stepped mid-draw
+        # origin slice even if the slice changes mid-draw
         # (napari #9207). {data_axis: value}; empty when not drawing.
         self._creation_anchor: dict[int, float] = {}
         self._clipboard: dict[str, Shapes] = {}
@@ -1386,6 +1392,9 @@ class Shapes(Layer):
         else:
             # Drop the origin-slice anchor; the next draw re-captures it.
             self._creation_anchor = {}
+            self._drawing_axes = None
+            self._drawing_slice_key = None
+            self._restore_drawing_feedback()
             self.events.drawing_finished()
 
     def _set_color(self, color, attribute: str):
@@ -1736,7 +1745,9 @@ class Shapes(Layer):
         highlights (interaction box, vertices, and outlines) are only drawn for
         the shapes visible in the current slice.
         """
-        if self._is_creating:
+        if self._is_creating and not (
+            self._drawing_paused or self._drawing_off_slice
+        ):
             return list(self.selected_data)
         view_indices = set(self._view_indices.tolist())
         return [i for i in self.selected_data if i in view_indices]
@@ -1810,15 +1821,28 @@ class Shapes(Layer):
 
         The ADD_RECTANGLE, ADD_ELLIPSE, ADD_LINE, ADD_POLYLINE, ADD_PATH, and
         ADD_POLYGON modes all allow for their corresponding shape type to be
-        added.
+        added. On another slice, click-built shapes keep vertices on their
+        original slice, while drag-built shapes pause. Changing the displayed
+        axes pauses drawing. Return to continue, or press Escape to finish.
         """
         return str(self._mode)
 
     @mode.setter
     def mode(self, val: str | Mode):
+        if Mode(val) != self._mode:
+            self._restore_drawing_feedback()
         mode = self._mode_setter_helper(val)
         if mode == self._mode:
             return
+
+        is_creating = self._is_creating
+        if is_creating:
+            # Shapes._finish_drawing() calls Shapes.refresh() via Shapes._update_dims()
+            # so we need to block thumbnail update from here
+            # TODO: this is not great... ideally we should no longer need this blocking system
+            #       but maybe follow up PR
+            with self.block_thumbnail_update():
+                self._finish_drawing()
 
         self._mode = mode
         self.events.mode(mode=mode)
@@ -1834,14 +1858,7 @@ class Shapes(Layer):
         if mode not in non_draw_modes:
             self.selected_data.clear()
 
-        if self._is_creating:
-            # Shapes._finish_drawing() calls Shapes.refresh() via Shapes._update_dims()
-            # so we need to block thumbnail update from here
-            # TODO: this is not great... ideally we should no longer need this blocking system
-            #       but maybe follow up PR
-            with self.block_thumbnail_update():
-                self._finish_drawing()
-        else:
+        if not is_creating:
             self.refresh(data_displayed=False, extent=False, thumbnail=False)
 
     def _reset_editable(self) -> None:
@@ -2556,10 +2573,9 @@ class Shapes(Layer):
         slice_key = np.array(self._data_slice.point)[
             self._slice_input.not_displayed
         ]
-        if self._data_view.staged_index is not None and (
-            self._slice_input.ndisplay != self._ndisplay_stored
-            or self._slice_input.order != self._display_order_stored
-            or not np.array_equal(slice_key, self._data_view.slice_key)
+        if (
+            self._data_view.staged_index is not None
+            and self._slice_input.ndisplay != self._ndisplay_stored
         ):
             self._finish_drawing()
 
@@ -2582,6 +2598,15 @@ class Shapes(Layer):
             if not np.array_equal(slice_key, self._data_view.slice_key):
                 view_changed = True
             self._data_view.slice_key = slice_key
+            if self._data_view._displayed_override_index is not None:
+                self._data_view._displayed_override = not (
+                    self._drawing_paused or self._drawing_off_slice
+                )
+                self._data_view._update_displayed()
+
+        self._update_drawing_feedback()
+        if self._data_view.staged_index is not None:
+            self.events._active_shape()
 
         # The selection is preserved across slice/ndisplay/order changes, but
         # the set of shapes *in view* changes, so the highlight state must be
@@ -2703,10 +2728,8 @@ class Shapes(Layer):
     def _outline_shapes(self):
         """Find outlines of any selected or hovered shapes.
 
-        Only shapes on the currently viewed slice are outlined. The outline
-        geometry is built from in-plane vertices and is not slice-aware, so a
-        selected or hovered shape sitting on another slice would otherwise draw
-        its highlight over the viewed slice.
+        An in-progress shape on another slice is drawn as a dashed outline.
+        Finished shapes are only outlined on the currently viewed slice.
 
         Returns
         -------
@@ -2716,6 +2739,9 @@ class Shapes(Layer):
             Mx3 array of any indices of vertices for triangles of outline or
             None
         """
+        if self._highlight_visible and self._drawing_off_slice:
+            return self._dashed_drawing_outline()
+
         # Only highlight selected shapes that are in view.
         selected_in_view = self._selected_data_in_view
         if (
@@ -2771,6 +2797,55 @@ class Shapes(Layer):
 
         return vertices, triangles
 
+    def _dashed_drawing_outline(self):
+        shape = self._data_view.shapes[self._moving_value[0]]
+        if isinstance(shape, shape_classes[ShapeType.ELLIPSE]):
+            points = shape._face_vertices[1:-1]
+        else:
+            points = shape.data_displayed
+        if shape._closed:
+            points = np.concatenate((points, points[:1]))
+
+        dash_length = 8 * self._normalized_scale_factor
+        half_width = self._highlight_width * self._normalized_scale_factor
+        vertices = []
+        distance = 0.0
+        for start, end in pairwise(points):
+            delta = end - start
+            length = np.linalg.norm(delta)
+            if length <= 0:
+                continue
+            direction = delta / length
+            normal = np.array([-direction[1], direction[0]]) * half_width
+            stops = np.arange(
+                np.floor(distance / (2 * dash_length)) * 2 * dash_length,
+                distance + length,
+                2 * dash_length,
+            )
+            for stop in stops:
+                lower = max(stop - distance, 0)
+                upper = min(stop + dash_length - distance, length)
+                if upper <= lower:
+                    continue
+                first = start + lower * direction
+                last = start + upper * direction
+                vertices.extend(
+                    [
+                        first - normal,
+                        first + normal,
+                        last - normal,
+                        last + normal,
+                    ]
+                )
+            distance += length
+
+        vertices = np.asarray(vertices, dtype=np.float32).reshape((-1, 2))
+        triangles = (
+            np.arange(len(vertices) // 4, dtype=np.uint32)[:, None, None] * 4
+            + np.array([[0, 1, 2], [1, 2, 3]], dtype=np.uint32)
+        ).reshape((-1, 3))
+        return vertices[:, ::-1], triangles
+
     def _compute_vertices_and_box(self):
         """Compute location of highlight vertices and box for rendering.
 
@@ -2791,7 +2866,14 @@ class Shapes(Layer):
         # Only highlight selected shapes that are in view.
         selected_in_view = self._selected_data_in_view
 
-        if self._highlight_visible and len(selected_in_view) > 0:
+        if self._highlight_visible and self._drawing_off_slice:
+            shape = self._data_view.shapes[self._moving_value[0]]
+            vertices = shape.data_displayed[:, ::-1]
+            face_color = 'white'
+            edge_color = self._highlight_color
+            pos = None
+            width = 0
+        elif self._highlight_visible and len(selected_in_view) > 0:
             if self._mode == Mode.SELECT and self._selected_box is not None:
                 # In select mode show the interaction bounding box (with its
                 # vertices and rotation handle). ``_selected_box`` is the single
@@ -2908,9 +2990,79 @@ class Shapes(Layer):
         self._drag_box_stored = copy(self._drag_box)
         self.events.highlight()
 
+    def _start_drawing(self) -> None:
+        self._drawing_axes = frozenset(self._slice_input.displayed)
+        self._drawing_slice_key = np.array(self._data_slice.point)[
+            sorted(self._slice_input.not_displayed)
+        ]
+        with self._data_view.batched_updates():
+            self._data_view._displayed_override_index = self._moving_value[0]
+            self._data_view._displayed_override = True
+            self._data_view._update_displayed()
+
+    @property
+    def _drawing_axes_changed(self) -> bool:
+        return (
+            self._drawing_axes is not None
+            and self._drawing_axes != frozenset(self._slice_input.displayed)
+        )
+
+    @property
+    def _drawing_off_slice(self) -> bool:
+        if (
+            not self._is_creating
+            or self._moving_value[0] is None
+            or self._drawing_slice_key is None
+            or self._drawing_axes_changed
+        ):
+            return False
+        slice_key = np.array(self._data_slice.point)[
+            sorted(self._slice_input.not_displayed)
+        ]
+        return not np.array_equal(
+            np.round(slice_key), np.round(self._drawing_slice_key)
+        )
+
+    @property
+    def _drawing_paused(self) -> bool:
+        if not self._is_creating or self._moving_value[0] is None:
+            return False
+        drag_modes = {Mode.ADD_RECTANGLE, Mode.ADD_ELLIPSE, Mode.ADD_LINE}
+        return self._drawing_axes_changed or (
+            self._drawing_off_slice
+            and (
+                self._mode in drag_modes or self._off_slice_drawing == 'pause'
+            )
+        )
+
+    def _update_drawing_feedback(self) -> None:
+        if not (self._drawing_paused or self._drawing_off_slice):
+            self._restore_drawing_feedback()
+            return
+        if self._drawing_help is None:
+            self._drawing_help = self.help
+        if self._drawing_axes_changed:
+            self.help = 'Drawing paused: return to the original axes to continue, or press Esc to finish'
+            self.cursor = 'forbidden'
+        elif self._drawing_paused:
+            self.help = 'Drawing paused: return to the original slice to continue, or press Esc to finish'
+            self.cursor = 'forbidden'
+        else:
+            self.help = 'Vertices are added on the slice where this shape was started. Press Esc to finish'
+            self.cursor = self._cursor_modes[self._mode]
+
+    def _restore_drawing_feedback(self) -> None:
+        if self._drawing_help is not None:
+            self.help = self._drawing_help
+            self._drawing_help = None
+            self.cursor = self._cursor_modes[self._mode]
+
     def _finish_drawing(self, event=None) -> None:
         """Reset properties used in shape drawing."""
         index = copy(self._moving_value[0])
+        with self._data_view.batched_updates():
+            self._data_view._displayed_override_index = None
+            self._data_view._update_displayed()
         # `_moving_value` also holds an existing shape's index during a move or
         # selection, and this method is called unconditionally by the `data` and
         # `shape_type` setters. Only a shape that was actually being created, and
@@ -3092,11 +3244,11 @@ class Shapes(Layer):
         indices : List[int]
             List of indices of shapes to remove from the layer.
         """
-        staged_index = self._data_view.staged_index
-        if staged_index is not None:
+        drawing_index = self._moving_value[0] if self._is_creating else None
+        if drawing_index is not None:
             self._finish_drawing()
-            if staged_index >= self.nshapes:
-                indices = [i for i in indices if i != staged_index]
+            if drawing_index >= self.nshapes:
+                indices = [i for i in indices if i != drawing_index]
 
         to_remove = sorted(indices, reverse=True)
 
@@ -3286,7 +3438,12 @@ class Shapes(Layer):
         if self._slice_input.ndisplay == 3:
             return None, None
 
-        if self._is_moving:
+        paused_index = (
+            self._moving_value[0]
+            if self._drawing_paused or self._drawing_off_slice
+            else None
+        )
+        if self._is_moving and paused_index is None:
             return self._moving_value
 
         coord = [position[i] for i in self._slice_input.displayed]
@@ -3294,7 +3451,11 @@ class Shapes(Layer):
         # Check selected shapes. Only shapes in view have a drawn interaction
         # box / vertices to hit-test against, so restrict to those.
         value = None
-        selected_index = self._selected_data_in_view
+        selected_index = [
+            index
+            for index in self._selected_data_in_view
+            if index != paused_index
+        ]
 
         if len(selected_index) > 0:
             self.scale[self._slice_input.displayed]
@@ -3345,7 +3506,7 @@ class Shapes(Layer):
 
         if value is None:
             # Check if mouse inside shape
-            shape = self._data_view.inside(coord)
+            shape = self._data_view.inside(coord, exclude=paused_index)
             value = (shape, None)
 
         return value
