@@ -1,12 +1,12 @@
 # Production fork branch inventory
 
 **Status:** Active
-**Last updated:** 2026-10-06
+**Last updated:** 2026-10-09
 **Scope:** napari integration, upstream topic branches, compositional experiments, and pirana consumers
 
 ## Context
 
-Integration includes upstream main through 10fa02054 (#9548), which brings in the landed #9411 and #9533. A merged PR is not a reason to revert its old merge: inspect the remaining source delta. Retire a compatibility path when its fix is present in every supported consumer profile.
+Integration includes upstream main through d6a4ccb8 (#9662), which brings in the landed #9407, #9441 and #9394. A merged PR is not a reason to revert its old merge: inspect the remaining source delta. Retire a compatibility path when its fix is present in every supported consumer profile.
 
 ## Current Decision
 
@@ -23,11 +23,10 @@ context menu.
 
 | PR | Branch | Purpose |
 |---|---|---|
-| [#9407](https://github.com/napari/napari/pull/9407) | `agent/tabular-numerals-window-scope` | Retain pending upstream review; preserve production adaptations. |
 | [#9442](https://github.com/napari/napari/pull/9442) | `feature/dims-axis-lock` | Model-only per-axis lock (split 2026-09-24 at a maintainer's request). Not the owner-lock API integration ships. |
 | [#9568](https://github.com/napari/napari/pull/9568) | `feature/dims-axis-lock-gui` | Padlock UI for #9442; stacked on it. |
 | [#9468](https://github.com/napari/napari/pull/9468) | `feature/monospace-status-readouts` | Retain pending upstream review; preserve production adaptations. |
-| [#9645](https://github.com/napari/napari/pull/9645) | `fix/tnum-keep-class-fonts` | Integration carries the PR head (`ddee96e16`) since 2026-10-06: app-level `tnum` through `QGuiApplication.setFont` plus Qt's per-class fonts. Integration still has the pre-merge #9407 status-bar loop, not the merged upstream version. |
+| [#9645](https://github.com/napari/napari/pull/9645) | `fix/tnum-keep-class-fonts` | Integration carries the PR head (`ddee96e16`) since 2026-10-06: app-level `tnum` through `QGuiApplication.setFont` plus Qt's per-class fonts. |
 | [#9326](https://github.com/napari/napari/pull/9326) | `feature/playback-cycle-time` | Retain pending upstream review; preserve production adaptations. |
 | [#9275](https://github.com/napari/napari/pull/9275) | `feature/shapes-drawing-state` | Retain pending upstream review; preserve production adaptations. |
 | [#9361](https://github.com/napari/napari/pull/9361) | `feature/uniform-key-autorepeat` | Integration carries the PR head (`73d1181fb`, repeat by default; `repeatable` deprecated and ignored) since 2026-09-26, after reverting the earlier opt-in-preserving generation (`b0850becc`). Owner rule: where a local fix and an open PR overlap, the PR takes precedence. |
@@ -35,8 +34,6 @@ context menu.
 | [#9532](https://github.com/napari/napari/pull/9532) | `fix/dock-widget-minimum-ratchet` | Retain pending upstream review; preserve production adaptations. |
 | [#9462](https://github.com/napari/napari/pull/9462) | `fix/dock-widget-size-policy` | Integration carries the PR head verbatim again since 2026-10-04 (it was lost when #9484's revert merged in via e33f37a6a). The dock file differs from the PR head only by #9532's minimum-shrink carry. |
 | [#9328](https://github.com/napari/napari/pull/9328) | `fix/settings-reset-announces-every-field` | Retain pending upstream review; preserve production adaptations. |
-| [#9441](https://github.com/napari/napari/pull/9441) | `fix/shapes-remove-selected-mid-draw` | Retain pending upstream review; preserve production adaptations. |
-| [#9394](https://github.com/napari/napari/pull/9394) | `fix/shapes-slice-key-rounding` | Retain pending upstream review; preserve production adaptations. |
 | [#9418](https://github.com/napari/napari/pull/9418) | `perf/shapes-hide-empty-subvisuals` | Retain pending upstream review; preserve production adaptations. |
 | [#9419](https://github.com/napari/napari/pull/9419) | `perf/shapes-staged-creation` | Retain pending upstream review; preserve production adaptations. |
 | [#9561](https://github.com/napari/napari/pull/9561) | `fix/nan-color-fast-math` | NaN `nan_color` stopgap; superseded by vispy#2796 once napari's minimum vispy includes it. |
@@ -52,6 +49,16 @@ When these merge, reconcile the integration delta rather than simply dropping it
 - #9563 reports ADDED `data_indices` counted from the end (`(-2, -1)`), matching `Points.add`. Integration reports positive indices (`(2, 3)`). Pirana is indifferent: its ROI controller ignores ADDED indices and normalizes negative indices for other actions (checked 2026-09-26), so take whichever form upstream accepts.
 - #9565: integration adopted the PR's implementation verbatim on 2026-09-27 (d47c2b4e1), replacing its own read-back (8fa195756). Nothing to reconcile when it merges.
 - #9442/#9568 add `Dims.axis_locked`, which is separate from integration's owner-lock API that pirana consumes.
+
+### Sync check (2026-10-09)
+
+Merged upstream/main (d6a4ccb8) into integration. Three carried PRs had landed upstream, and the conflicts were reconciled as follows:
+
+- #9407 landed as one `use_tabular_numerals(self)` call on `ViewerStatusBar`. Integration takes it in place of its pre-merge per-label loop, keeps #9645's per-class-font handling in `use_tabular_numerals`, and still applies #9468's fixed-pitch font to the status and coordinate readouts.
+- #9441: upstream shifts `_moving_value` inside `remove()`. Integration's `remove()` finishes the draw before deleting (fc7b0d0a), so the shifted index is normally already cleared, and the local out-of-range guard in `_finish_drawing` was dropped as redundant. Upstream's new test was adapted twice: it sets up the in-progress shape with `edit_staged` (#9419's staging), and it asserts that an ADDED event was emitted rather than that it came last, because integration emits ADDED before REMOVING.
+- #9394: upstream's `Shape._slice_key_of` replaces the local `np.round` in `Rectangle`; the behavior is the same.
+
+Upstream #9493 removed `VispyBaseLayer._on_camera_move`, so integration's camera `angles` connection in `VispyCanvas` was dropped. The venv needed `pip install -e .` again for `napari-resources`.
 
 ### Sync check (2026-09-26)
 

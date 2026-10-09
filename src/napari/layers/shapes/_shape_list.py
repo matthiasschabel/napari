@@ -904,7 +904,7 @@ class ShapeList:
             self._displayed[self._displayed_override_index] = (
                 self._displayed_override
             )
-        disp_indices: IndexArray = np.nonzero(self._displayed)[0]  # pyrefly: ignore [bad-assignment]
+        disp_indices: IndexArray = np.nonzero(self._displayed)[0]
 
         # The staged shape is rendered separately and has no aggregate ranges.
         disp_indices = disp_indices[disp_indices != self._staged_index]
@@ -1409,7 +1409,7 @@ class ShapeList:
         vert_indices_to_del = np.concatenate(
             [np.arange(s.start, s.stop) for s in vert_slices]
         )
-        self._vertices = np.delete(self._vertices, vert_indices_to_del, axis=0)  # pyrefly: ignore [no-matching-overload]
+        self._vertices = np.delete(self._vertices, vert_indices_to_del, axis=0)
 
         vert_counts = np.diff(self._vertices_index)
         new_vert_counts = np.delete(vert_counts, indices)
@@ -1428,13 +1428,13 @@ class ShapeList:
         deleted_vertex_shift = np.zeros(len(self._mesh.vertices), dtype=int)
         deleted_vertex_shift[mesh_vert_indices_to_del] = 1
         deleted_vertex_shift = np.cumsum(deleted_vertex_shift)
-        self._mesh.vertices = np.delete(  # pyrefly: ignore [no-matching-overload]
+        self._mesh.vertices = np.delete(
             self._mesh.vertices, mesh_vert_indices_to_del, axis=0
         )
-        self._mesh.vertices_centers = np.delete(  # pyrefly: ignore [no-matching-overload]
+        self._mesh.vertices_centers = np.delete(
             self._mesh.vertices_centers, mesh_vert_indices_to_del, axis=0
         )
-        self._mesh.vertices_offsets = np.delete(  # pyrefly: ignore [no-matching-overload]
+        self._mesh.vertices_offsets = np.delete(
             self._mesh.vertices_offsets, mesh_vert_indices_to_del, axis=0
         )
 
@@ -1452,10 +1452,10 @@ class ShapeList:
             [np.arange(s.start, s.stop) for s in mesh_tri_slices]
         )
         self._mesh.triangles -= deleted_vertex_shift[self._mesh.triangles]
-        self._mesh.triangles = np.delete(  # pyrefly: ignore [no-matching-overload]
+        self._mesh.triangles = np.delete(
             self._mesh.triangles, mesh_tri_indices_to_del, axis=0
         )
-        self._mesh.triangles_colors = np.delete(  # pyrefly: ignore [no-matching-overload]
+        self._mesh.triangles_colors = np.delete(
             self._mesh.triangles_colors, mesh_tri_indices_to_del, axis=0
         )
 
@@ -1571,7 +1571,7 @@ class ShapeList:
             triangles_z_order = [
                 np.arange(idx[z], idx[z] + counts[z]) for z in self._z_order
             ]
-            self._mesh.triangles_z_order = np.concatenate(triangles_z_order)  # pyrefly: ignore [bad-assignment]
+            self._mesh.triangles_z_order = np.concatenate(triangles_z_order)
         self._update_displayed()
 
     def edit(
