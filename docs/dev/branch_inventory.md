@@ -60,6 +60,28 @@ Merged upstream/main (d6a4ccb8) into integration. Three carried PRs had landed u
 
 Upstream #9493 removed `VispyBaseLayer._on_camera_move`, so integration's camera `angles` connection in `VispyCanvas` was dropped. The venv needed `pip install -e .` again for `napari-resources`.
 
+Fork branches for 15 merged PRs were deleted on 2026-10-09 after their tips were confirmed to match the merged PR heads. No local branches or worktrees remained. Tips are kept at `refs/archive/2026-10-09/<branch>` (local only) and at `refs/pull/<N>/head` upstream:
+
+| PR | Branch | Tip |
+|---|---|---|
+| #9441 | `fix/shapes-remove-selected-mid-draw` | `d53b8620b` |
+| #9440 | `fix/playback-debounce-noop-frame` | `be84fe839` |
+| #9407 | `agent/tabular-numerals-window-scope` | `7f8803fb8` |
+| #9396 | `fix/vectors-emit-mode-on-color-setter` | `d4d85ab2c` |
+| #9394 | `fix/shapes-slice-key-rounding` | `f0e10214a` |
+| #9373 | `fix/nan-colormap-nan-color` | `562b040bb` |
+| #9367 | `agent/stop-status-thread-at-exit` | `078dbe9e0` |
+| #9364 | `fix/vectors-controls-signal-wiring` | `58226759f` |
+| #9353 | `fix/vectors-color-mode-render-refresh` | `45b85193b` |
+| #9334 | `fix/cycle-mode-default-color-cycle` | `e9e85f981` |
+| #9333 | `fix/vectors-edge-color-mode-direct` | `e8fb86946` |
+| #9327 | `fix/playback-popup-return-close` | `b816fcc36` |
+| #9257 | `fix/nav-key-autorepeat` | `872a15586` |
+| #9255 | `feature/active-slider-current-color` | `028970940` |
+| #9254 | `feature/dim-slider-minimum-width` | `569bd0fe5` |
+
+The 2026-08-15 upstream merge (1071b2a9) had dropped #9290's `_viewer_tour` initialization from `qt_main_window.py`, which broke Help > tour; restored in b0969b72. An audit of every upstream merge into integration found no other lost upstream lines.
+
 ### Sync check (2026-09-26)
 
 Integration contains `upstream/main` (4b1f6dd77). Each open-PR and perf branch outside integration's history had its own changed tests run against integration. #9361 was the only feature missing. Its earlier generation (`b0850becc`, opt-in model kept) was merged first, then reverted the same day in favour of the PR head (`73d1181fb`, repeat by default); see the table above. QA review of the PR-head merge on 2026-09-26: ruff clean; utils, action-manager and events tests 294 passed; labels, layer-utils and viewer key-binding tests 95 passed. pirana-gui against this tip first failed one GUI test (`test_a_held_page_key_fires_once`, which pinned the opt-in model); pirana-gui bcbdba1 fix: the test is split by policy and the page keys follow napari's repeat policy, after which the fork lane passes 4126 GUI tests. The fork environment needed a re-sync for the new `napari-resources` dependency. The remaining failures are the known generation differences:
