@@ -2,14 +2,17 @@ import pytest
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QDockWidget,
+    QGroupBox,
     QHBoxLayout,
     QPushButton,
+    QSizePolicy,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from napari._qt.utils import combine_widgets
+from napari._qt.widgets.qt_viewer_dock_widget import QtCustomTitleBar
 
 
 def test_add_dock_widget(make_napari_viewer):
@@ -151,6 +154,40 @@ def test_adding_stretch(make_napari_viewer):
     dw.close()
 
 
+def test_dock_widget_can_grow_vertically(make_napari_viewer):
+    """A dock is capped at its widget's size hint unless the widget's vertical size policy can grow."""
+    viewer = make_napari_viewer()
+
+    # a compact widget is held at its size hint rather than stretched
+    widg = QWidget()
+    widg.setLayout(QVBoxLayout())
+    widg.layout().addWidget(QPushButton())
+    dw = viewer.window.add_dock_widget(widg, area='right')
+    assert dw.layout().maximumSize().height() < widg.maximumHeight()
+    dw.close()
+
+    # ... unless something in its layout wants vertical space, at any depth
+    widg = QWidget()
+    widg.setLayout(QVBoxLayout())
+    box = QGroupBox()
+    box.setLayout(QVBoxLayout())
+    box.layout().addWidget(QTextEdit())
+    widg.layout().addWidget(box)
+    dw = viewer.window.add_dock_widget(widg, area='right')
+    assert dw.layout().maximumSize().height() == widg.maximumHeight()
+    dw.close()
+
+    # ... or the widget asks for it itself, with the horizontal policy still normalized
+    widg = QWidget()
+    widg.setSizePolicy(
+        QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+    )
+    dw = viewer.window.add_dock_widget(widg, area='right')
+    assert dw.layout().maximumSize().height() == widg.maximumHeight()
+    assert widg.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Preferred
+    dw.close()
+
+
 def test_float_unfloat_title_bar(make_napari_viewer):
     """Float then unfloat must preserve the custom title bar with correct orientation.
 
@@ -271,3 +308,15 @@ def test_dock_minimum_shrinks_with_content(make_napari_viewer, qtbot):
 
     tall.hide()
     qtbot.waitUntil(lambda: dw.minimumSizeHint().height() == base)
+
+
+def test_update_font_metrics_without_title(qtbot, monkeypatch):
+    """``_update_font_metrics`` is a no-op before the title label exists."""
+    dock = QDockWidget()
+    qtbot.addWidget(dock)
+    title_bar = QtCustomTitleBar(dock, 'test')
+    # simulate a font change arriving before the title label is created
+    monkeypatch.delattr(title_bar, 'title')
+    height = title_bar.minimumHeight()
+    title_bar._update_font_metrics()
+    assert title_bar.minimumHeight() == height

@@ -62,7 +62,7 @@ class VispyShapesLayer(VispyBaseLayer):
 
     def _on_active_shape_change(self) -> None:
         index = self.layer._data_view.staged_index
-        if index is None:
+        if index is None or not self.layer._data_view._displayed[index]:
             (
                 self._active_shape_vertices,
                 self._active_shape_faces,

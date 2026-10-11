@@ -12,7 +12,6 @@ from napari.components.overlays import (
     CanvasAxesOverlay,
     CanvasOverlay,
     CurrentSliceOverlay,
-    DirectionLabelsOverlay,
     ScaleBarOverlay,
     TextOverlay,
     ZoomOverlay,
@@ -87,9 +86,9 @@ class Canvas(EventedModel):
                 '_zoom_box': ZoomOverlay(),
                 'current_slice': CurrentSliceOverlay(),
                 'axes': CanvasAxesOverlay(),
-                'direction_labels': DirectionLabelsOverlay(),
             }
-        )
+        ),
+        frozen=True,
     )
     overlay_tiling: OverlayTiling = Field(
         default_factory=OverlayTiling, frozen=True

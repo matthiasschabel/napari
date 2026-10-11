@@ -12,6 +12,7 @@ from qtpy.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
@@ -41,6 +42,42 @@ dock_area_to_str = {
     Qt.DockWidgetArea.TopDockWidgetArea: 'top',
     Qt.DockWidgetArea.BottomDockWidgetArea: 'bottom',
 }
+
+
+_GROWING_POLICIES = frozenset(
+    {
+        QSizePolicy.Policy.Expanding,
+        QSizePolicy.Policy.MinimumExpanding,
+        QSizePolicy.Policy.Ignored,
+    }
+)
+
+
+def _wants_vertical_space(widget: QWidget) -> bool:
+    """Whether a widget, or anything in its layout, asks to grow vertically."""
+    if widget.sizePolicy().verticalPolicy() in _GROWING_POLICIES:
+        return True
+
+    # not uncommon to see people shadow the builtin layout() method
+    try:
+        wlayout = widget.layout()
+    except TypeError:
+        return False
+    return wlayout is not None and _layout_wants_vertical_space(wlayout)
+
+
+def _layout_wants_vertical_space(layout: QLayout) -> bool:
+    for i in range(layout.count()):
+        item = layout.itemAt(i)
+        wdg = item.widget()
+        if wdg is not None:
+            if _wants_vertical_space(wdg):
+                return True
+        elif item.layout() is not None and _layout_wants_vertical_space(
+            item.layout()
+        ):
+            return True
+    return False
 
 
 class QtViewerDockWidget(QDockWidget):
@@ -131,6 +168,12 @@ class QtViewerDockWidget(QDockWidget):
 
         is_vertical = area in {'left', 'right'}
         widget_ = combine_widgets(widget, vertical=is_vertical)
+        vertical_policy = (
+            widget_.sizePolicy().verticalPolicy()
+            if _wants_vertical_space(widget_)
+            else QSizePolicy.Policy.Maximum
+        )
+        widget_.setSizePolicy(QSizePolicy.Policy.Preferred, vertical_policy)
         self.setWidget(widget_)
         if is_vertical and add_vertical_stretch:
             self._maybe_add_vertical_stretch(widget_)
@@ -201,12 +244,7 @@ class QtViewerDockWidget(QDockWidget):
         ...if there is not already a widget that wants vertical space
         (like a textedit or listwidget or something).
         """
-        exempt_policies = {
-            QSizePolicy.Expanding,
-            QSizePolicy.MinimumExpanding,
-            QSizePolicy.Ignored,
-        }
-        if widget.sizePolicy().verticalPolicy() in exempt_policies:
+        if _wants_vertical_space(widget):
             return
 
         # not uncommon to see people shadow the builtin layout() method
@@ -217,14 +255,6 @@ class QtViewerDockWidget(QDockWidget):
                 return
         except TypeError:
             return
-
-        for i in range(wlayout.count()):
-            wdg = wlayout.itemAt(i).widget()
-            if (
-                wdg is not None
-                and wdg.sizePolicy().verticalPolicy() in exempt_policies
-            ):
-                return
 
         # not all widgets have addStretch...
         if hasattr(wlayout, 'addStretch'):
@@ -458,16 +488,30 @@ class QtCustomTitleBar(QLabel):
 
         self.setLayout(layout)
         self.setCursor(Qt.CursorShape.OpenHandCursor)
+        self._update_font_metrics()
+
+    def _update_font_metrics(self) -> None:
+        """Resize the title bar to fit the current font."""
+        if not hasattr(self, 'title'):
+            return
         # set minimum heights to ensure enough space for the title text
         font_height = QFontMetrics(self.font()).height()
         self.setMinimumHeight(font_height + 10)
         self.title.setMinimumHeight(font_height)
 
+    def changeEvent(self, event):
+        """Keep the title bar height in sync with font size changes."""
+        if event.type() == QEvent.Type.FontChange:
+            self._update_font_metrics()
+        super().changeEvent(event)
+
     def sizeHint(self):
         # this seems to be the correct way to set the height of the titlebar
+        # responsive to font size
         szh = super().sizeHint()
+        size = QFontMetrics(self.font()).height() + 10
         if self.vertical:
-            szh.setWidth(20)
+            szh.setWidth(size)
         else:
-            szh.setHeight(20)
+            szh.setHeight(size)
         return szh

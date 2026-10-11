@@ -429,6 +429,8 @@ class ShapeList:
         self._ndisplay = ndisplay
         self.shapes: list[Shape] = []
         self._displayed = np.array([])
+        self._displayed_override_index: int | None = None
+        self._displayed_override = True
         self._slice_key = np.array([])
         self.displayed_vertices = np.array([], dtype=CoordinateDtype)
         self.displayed_vertices_to_shape_num = np.array([], dtype=IndexDtype)
@@ -898,8 +900,14 @@ class ShapeList:
             )
         else:
             self._displayed = np.array([])
-        disp_indices: IndexArray = np.nonzero(self._displayed)[0]  # pyrefly: ignore [bad-assignment]
+        if self._displayed_override_index is not None:
+            self._displayed[self._displayed_override_index] = (
+                self._displayed_override
+            )
+        disp_indices: IndexArray = np.nonzero(self._displayed)[0]
 
+        # The staged shape is rendered separately and has no aggregate ranges.
+        disp_indices = disp_indices[disp_indices != self._staged_index]
         z_order = self._mesh.triangles_z_order
 
         triangle_ranges: IndexArray | slice
@@ -1401,7 +1409,7 @@ class ShapeList:
         vert_indices_to_del = np.concatenate(
             [np.arange(s.start, s.stop) for s in vert_slices]
         )
-        self._vertices = np.delete(self._vertices, vert_indices_to_del, axis=0)  # pyrefly: ignore [no-matching-overload]
+        self._vertices = np.delete(self._vertices, vert_indices_to_del, axis=0)
 
         vert_counts = np.diff(self._vertices_index)
         new_vert_counts = np.delete(vert_counts, indices)
@@ -1420,13 +1428,13 @@ class ShapeList:
         deleted_vertex_shift = np.zeros(len(self._mesh.vertices), dtype=int)
         deleted_vertex_shift[mesh_vert_indices_to_del] = 1
         deleted_vertex_shift = np.cumsum(deleted_vertex_shift)
-        self._mesh.vertices = np.delete(  # pyrefly: ignore [no-matching-overload]
+        self._mesh.vertices = np.delete(
             self._mesh.vertices, mesh_vert_indices_to_del, axis=0
         )
-        self._mesh.vertices_centers = np.delete(  # pyrefly: ignore [no-matching-overload]
+        self._mesh.vertices_centers = np.delete(
             self._mesh.vertices_centers, mesh_vert_indices_to_del, axis=0
         )
-        self._mesh.vertices_offsets = np.delete(  # pyrefly: ignore [no-matching-overload]
+        self._mesh.vertices_offsets = np.delete(
             self._mesh.vertices_offsets, mesh_vert_indices_to_del, axis=0
         )
 
@@ -1444,10 +1452,10 @@ class ShapeList:
             [np.arange(s.start, s.stop) for s in mesh_tri_slices]
         )
         self._mesh.triangles -= deleted_vertex_shift[self._mesh.triangles]
-        self._mesh.triangles = np.delete(  # pyrefly: ignore [no-matching-overload]
+        self._mesh.triangles = np.delete(
             self._mesh.triangles, mesh_tri_indices_to_del, axis=0
         )
-        self._mesh.triangles_colors = np.delete(  # pyrefly: ignore [no-matching-overload]
+        self._mesh.triangles_colors = np.delete(
             self._mesh.triangles_colors, mesh_tri_indices_to_del, axis=0
         )
 
@@ -1563,7 +1571,7 @@ class ShapeList:
             triangles_z_order = [
                 np.arange(idx[z], idx[z] + counts[z]) for z in self._z_order
             ]
-            self._mesh.triangles_z_order = np.concatenate(triangles_z_order)  # pyrefly: ignore [bad-assignment]
+            self._mesh.triangles_z_order = np.concatenate(triangles_z_order)
         self._update_displayed()
 
     def edit(
@@ -1600,6 +1608,7 @@ class ShapeList:
                 edge_width=cur_shape.edge_width,
                 z_index=cur_shape.z_index,
                 dims_order=cur_shape.dims_order,
+                ndisplay=cur_shape.ndisplay,
             )
             self.shapes[index] = shape
         else:
@@ -1725,7 +1734,10 @@ class ShapeList:
             if self.shapes[index].dims_order != dims_order:
                 shape = self.shapes[index]
                 shape.dims_order = dims_order
-                self.update(index)
+                if index == self._staged_index:
+                    self._clear_cache()
+                else:
+                    self.update(index)
         self._update_z_order()
 
     def update_z_index(self, index, z_index):
@@ -2037,7 +2049,7 @@ class ShapeList:
     ) -> np.ndarray[tuple[int], np.dtype[IndexDtype]]:
         return np.array([s[0] for s in self._visible_shapes])
 
-    def inside(self, coord):
+    def inside(self, coord, exclude=None):
         """Determines if any shape at given coord by looking inside triangle
         meshes. Looks only at displayed shapes
 
@@ -2045,6 +2057,8 @@ class ShapeList:
         ----------
         coord : sequence of float
             Image coordinates to check if any shapes are at.
+        exclude : int | None
+            Index of a shape to omit from hit testing.
 
         Returns
         -------
@@ -2059,6 +2073,8 @@ class ShapeList:
             (bounding_boxes[0] <= coord) * (bounding_boxes[1] >= coord),
             axis=1,
         )
+        if exclude is not None:
+            in_bbox &= self._visible_shapes_indices != exclude
         inside_indices = np.flatnonzero(in_bbox)
         if inside_indices.size == 0:
             return None

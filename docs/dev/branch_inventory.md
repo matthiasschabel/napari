@@ -1,43 +1,108 @@
 # Production fork branch inventory
 
 **Status:** Active
-**Last updated:** 2026-09-19
+**Last updated:** 2026-10-09
 **Scope:** napari integration, upstream topic branches, compositional experiments, and pirana consumers
 
 ## Context
 
-Integration includes upstream main through 38ab38ff6 (#9396). A merged PR is not a reason to revert its old merge: inspect the remaining source delta. Retire a compatibility path when its fix is present in every supported consumer profile.
+Integration includes upstream main through d6a4ccb8 (#9662), which brings in the landed #9407, #9441 and #9394. A merged PR is not a reason to revert its old merge: inspect the remaining source delta. Retire a compatibility path when its fix is present in every supported consumer profile.
 
 ## Current Decision
 
 Production assembly: `integration`. Experimental synchronization flows one way through `compositional-core` to `explore/compositional-data-model`. See [the model boundary](compositional_model_boundary.md).
 
-Pirana viewer's stock floor is 0.9.0rc1. #9257 and #9364 are already present there, so its fork-only autorepeat probe and private Vectors mode subscription are retired. #9396 is not in stock 0.9.1: retain the explicit direct-mode resynchronization. The appended-vector-color workaround addresses a separate unresolved API gap. The independent pirana-colormap package may still support napari 0.8.
+Pirana viewer's stock floor is 0.9.1 (raised from 0.9.0rc1 on 2026-09-26). #9257 and #9364 are already present there, so its fork-only autorepeat probe and private Vectors mode subscription are retired. #9396 is not in stock 0.9.1: retain the explicit direct-mode resynchronization. The appended-vector-color workaround addresses a separate unresolved API gap. The independent pirana-colormap package may still support napari 0.8.
+
+The integration keeps its layer-list held-Delete suppression for now: it prevents repeated Delete
+from walking the selection and removing unrelated layers. Pirana-specific right-click vertex
+rollback has been removed because Pirana owns Backspace rollback and uses right-click for its ROI
+context menu.
 
 ### Open upstream PRs: retain
 
 | PR | Branch | Purpose |
 |---|---|---|
-| [#9407](https://github.com/napari/napari/pull/9407) | `agent/tabular-numerals-window-scope` | Retain pending upstream review; preserve production adaptations. |
-| [#9442](https://github.com/napari/napari/pull/9442) | `feature/dims-axis-lock` | Retain pending upstream review; preserve production adaptations. |
+| [#9442](https://github.com/napari/napari/pull/9442) | `feature/dims-axis-lock` | Model-only per-axis lock (split 2026-09-24 at a maintainer's request). Not the owner-lock API integration ships. |
+| [#9568](https://github.com/napari/napari/pull/9568) | `feature/dims-axis-lock-gui` | Padlock UI for #9442; stacked on it. |
 | [#9468](https://github.com/napari/napari/pull/9468) | `feature/monospace-status-readouts` | Retain pending upstream review; preserve production adaptations. |
+| [#9645](https://github.com/napari/napari/pull/9645) | `fix/tnum-keep-class-fonts` | Integration carries the PR head (`ddee96e16`) since 2026-10-06: app-level `tnum` through `QGuiApplication.setFont` plus Qt's per-class fonts. |
 | [#9326](https://github.com/napari/napari/pull/9326) | `feature/playback-cycle-time` | Retain pending upstream review; preserve production adaptations. |
 | [#9275](https://github.com/napari/napari/pull/9275) | `feature/shapes-drawing-state` | Retain pending upstream review; preserve production adaptations. |
-| [#9361](https://github.com/napari/napari/pull/9361) | `feature/uniform-key-autorepeat` | Retain pending upstream review; preserve production adaptations. |
+| [#9361](https://github.com/napari/napari/pull/9361) | `feature/uniform-key-autorepeat` | Integration carries the PR head (`73d1181fb`, repeat by default; `repeatable` deprecated and ignored) since 2026-09-26, after reverting the earlier opt-in-preserving generation (`b0850becc`). Owner rule: where a local fix and an open PR overlap, the PR takes precedence. |
 | [#9335](https://github.com/napari/napari/pull/9335) | `feature/vectors-feature-color-mapping-controls` | Retain pending upstream review; preserve production adaptations. |
 | [#9532](https://github.com/napari/napari/pull/9532) | `fix/dock-widget-minimum-ratchet` | Retain pending upstream review; preserve production adaptations. |
-| [#9462](https://github.com/napari/napari/pull/9462) | `fix/dock-widget-size-policy` | Retain pending upstream review; preserve production adaptations. |
-| [#9533](https://github.com/napari/napari/pull/9533) | `fix/qtviewer-prepopulated-model` | Retain pending upstream review; preserve production adaptations. |
+| [#9462](https://github.com/napari/napari/pull/9462) | `fix/dock-widget-size-policy` | Integration carries the PR head verbatim again since 2026-10-04 (it was lost when #9484's revert merged in via e33f37a6a). The dock file differs from the PR head only by #9532's minimum-shrink carry. |
 | [#9328](https://github.com/napari/napari/pull/9328) | `fix/settings-reset-announces-every-field` | Retain pending upstream review; preserve production adaptations. |
-| [#9441](https://github.com/napari/napari/pull/9441) | `fix/shapes-remove-selected-mid-draw` | Retain pending upstream review; preserve production adaptations. |
-| [#9394](https://github.com/napari/napari/pull/9394) | `fix/shapes-slice-key-rounding` | Retain pending upstream review; preserve production adaptations. |
 | [#9418](https://github.com/napari/napari/pull/9418) | `perf/shapes-hide-empty-subvisuals` | Retain pending upstream review; preserve production adaptations. |
 | [#9419](https://github.com/napari/napari/pull/9419) | `perf/shapes-staged-creation` | Retain pending upstream review; preserve production adaptations. |
-| [#9411](https://github.com/napari/napari/pull/9411) | `perf/skip-identity-unit-conversion` | Retain pending upstream review; preserve production adaptations. |
+| [#9561](https://github.com/napari/napari/pull/9561) | `fix/nan-color-fast-math` | NaN `nan_color` stopgap; superseded by vispy#2796 once napari's minimum vispy includes it. |
+| [#9562](https://github.com/napari/napari/pull/9562) | `fix/shapes-finish-drawing-emit-order` | Clear `_is_creating` before `_finish_drawing` emits. |
+| [#9563](https://github.com/napari/napari/pull/9563) | `feature/shapes-added-event-indices` | ADDED indices counted from the end, like Points; stacked on #9562. Differs from integration, see below. |
+| [#9564](https://github.com/napari/napari/pull/9564) | `fix/shapes-data-setter-scalar-shape-type` | Broadcast a scalar `shape_type` in the data setter. |
+| [#9565](https://github.com/napari/napari/pull/9565) | `fix/tiled-image-keeps-state-on-retile` | Tiled image keeps settings, GL state and filters across a retile. Integration carries this exact change. |
+
+### Upstream PRs that differ from integration
+
+When these merge, reconcile the integration delta rather than simply dropping it:
+
+- #9563 reports ADDED `data_indices` counted from the end (`(-2, -1)`), matching `Points.add`. Integration reports positive indices (`(2, 3)`). Pirana is indifferent: its ROI controller ignores ADDED indices and normalizes negative indices for other actions (checked 2026-09-26), so take whichever form upstream accepts.
+- #9565: integration adopted the PR's implementation verbatim on 2026-09-27 (d47c2b4e1), replacing its own read-back (8fa195756). Nothing to reconcile when it merges.
+- #9442/#9568 add `Dims.axis_locked`, which is separate from integration's owner-lock API that pirana consumes.
+
+### Sync check (2026-10-09)
+
+Merged upstream/main (d6a4ccb8) into integration. Three carried PRs had landed upstream, and the conflicts were reconciled as follows:
+
+- #9407 landed as one `use_tabular_numerals(self)` call on `ViewerStatusBar`. Integration takes it in place of its pre-merge per-label loop, keeps #9645's per-class-font handling in `use_tabular_numerals`, and still applies #9468's fixed-pitch font to the status and coordinate readouts.
+- #9441: upstream shifts `_moving_value` inside `remove()`. Integration's `remove()` finishes the draw before deleting (fc7b0d0a), so the shifted index is normally already cleared, and the local out-of-range guard in `_finish_drawing` was dropped as redundant. Upstream's new test was adapted twice: it sets up the in-progress shape with `edit_staged` (#9419's staging), and it asserts that an ADDED event was emitted rather than that it came last, because integration emits ADDED before REMOVING.
+- #9394: upstream's `Shape._slice_key_of` replaces the local `np.round` in `Rectangle`; the behavior is the same.
+
+Upstream #9493 removed `VispyBaseLayer._on_camera_move`, so integration's camera `angles` connection in `VispyCanvas` was dropped. The venv needed `pip install -e .` again for `napari-resources`.
+
+Fork branches for 15 merged PRs were deleted on 2026-10-09 after their tips were confirmed to match the merged PR heads. No local branches or worktrees remained. Tips are kept at `refs/archive/2026-10-09/<branch>` (local only) and at `refs/pull/<N>/head` upstream:
+
+| PR | Branch | Tip |
+|---|---|---|
+| #9441 | `fix/shapes-remove-selected-mid-draw` | `d53b8620b` |
+| #9440 | `fix/playback-debounce-noop-frame` | `be84fe839` |
+| #9407 | `agent/tabular-numerals-window-scope` | `7f8803fb8` |
+| #9396 | `fix/vectors-emit-mode-on-color-setter` | `d4d85ab2c` |
+| #9394 | `fix/shapes-slice-key-rounding` | `f0e10214a` |
+| #9373 | `fix/nan-colormap-nan-color` | `562b040bb` |
+| #9367 | `agent/stop-status-thread-at-exit` | `078dbe9e0` |
+| #9364 | `fix/vectors-controls-signal-wiring` | `58226759f` |
+| #9353 | `fix/vectors-color-mode-render-refresh` | `45b85193b` |
+| #9334 | `fix/cycle-mode-default-color-cycle` | `e9e85f981` |
+| #9333 | `fix/vectors-edge-color-mode-direct` | `e8fb86946` |
+| #9327 | `fix/playback-popup-return-close` | `b816fcc36` |
+| #9257 | `fix/nav-key-autorepeat` | `872a15586` |
+| #9255 | `feature/active-slider-current-color` | `028970940` |
+| #9254 | `feature/dim-slider-minimum-width` | `569bd0fe5` |
+
+The 2026-08-15 upstream merge (1071b2a9) had dropped #9290's `_viewer_tour` initialization from `qt_main_window.py`, which broke Help > tour; restored in b0969b72. An audit of every upstream merge into integration found no other lost upstream lines.
+
+### Sync check (2026-09-26)
+
+Integration contains `upstream/main` (4b1f6dd77). Each open-PR and perf branch outside integration's history had its own changed tests run against integration. #9361 was the only feature missing. Its earlier generation (`b0850becc`, opt-in model kept) was merged first, then reverted the same day in favour of the PR head (`73d1181fb`, repeat by default); see the table above. QA review of the PR-head merge on 2026-09-26: ruff clean; utils, action-manager and events tests 294 passed; labels, layer-utils and viewer key-binding tests 95 passed. pirana-gui against this tip first failed one GUI test (`test_a_held_page_key_fires_once`, which pinned the opt-in model); pirana-gui bcbdba1 fix: the test is split by policy and the page keys follow napari's repeat policy, after which the fork lane passes 4126 GUI tests. The fork environment needed a re-sync for the new `napari-resources` dependency. The remaining failures are the known generation differences:
+
+- ADDED indices: upstream's `test_polygons` expects `(-1,)` from `add_polygons`; integration reports `(0,)`. This fails the branches for #9275, #9563 and #9564 that carry upstream's test file.
+- #9561's `decode_nan_sentinel` is superseded by integration's `decode_sentinels` (`gpu-exceptional-colors`).
+- #9442/#9568, as listed above. (#9565 was one until integration adopted the PR on 2026-09-27.)
+- `perf/keep-extent-cache-across-slices` and `perf/mesh-shader-reuse` test a `Mesh`-based Vectors node; integration draws Vectors with `VectorsVisual`.
+- `feature/dims-lock-flash`, `feature/dims-navigation-lock` and `feature/dims-nav-lock-draw-exempt` are earlier generations of integration's owner-lock API and were not retested.
+
+`feature/direction-labels` was deleted locally and on the fork on 2026-09-26; its tip `bd501244b` is kept at `refs/archive/2026-09-26/feature/direction-labels` (local only). `feature/direction-edge-labels` (PR #9572, declined) followed on 2026-09-27: branch, fork branch and worktree deleted, tip `0990782b4` kept at `refs/archive/2026-09-27/feature/direction-edge-labels` (local only) and at `refs/pull/9572/head` upstream. Branches cut from integration before 2026-09-25 (the compositional branches, `feature/gpu-exceptional-colors`, `dev/gl-exceptional-probe`, `fix/dims-lock-active-axis`, `feature/dims-lock-flash`) still carry the removed overlay until they next take integration.
+
+### Related vispy work
+
+- vispy#2796: a NaN test that fast-math compilers cannot fold (`gl_DepthRange.far`). Fixes napari #8056 at the source.
+- vispy#2795: fixes `ImageVisual.bad_color`, which has raised since vispy#2663; `test_image_nan` needs it.
+- vispy#2798 (issue): CPU-scaled NaN renders a driver-dependent color.
 
 ### Other production changes: retain
 
-- Navigation owner locks, draw exemptions, active-axis recovery, and direction labels remain consumed by pirana. Open #9442 does not replace the owner-lock API; do not delete it based on that proposal.
+- Navigation owner locks, draw exemptions, and active-axis recovery remain consumed by pirana. The fork's `DirectionLabelsOverlay` and `viewer.direction_labels` were removed on 2026-09-25 (pirana never used them). The `direction_edge_labels` helper was removed on 2026-09-27 after upstream declined it (#9571, #9572) as plugin territory; pirana now maps the labels itself in `pirana.viewer._orientation`. Open #9442 does not replace the owner-lock API; do not delete it based on that proposal.
 - Shapes drawing-event order, scalar shape-type assignment, lasso vertex preservation, and custom cursors remain production features/fixes.
 - Exceptional GPU colors, infinity colormap fields, NaN handling, and the selector hook remain used by pirana's colormap workflow.
 - Rendering optimizations (extent/transform/shader reuse, empty subvisual suppression, viewport culling) remain separate production patches with measured evidence. No new rendering redesign is part of this maintenance pass.
@@ -57,7 +122,13 @@ Open PR branches and public dependency-retention tags are preserved. Merged bran
 
 ## Deferred Work
 
-The owner-lock API remains until pirana migrates safely. The Vectors dynamic-controls gap remains an explicit upstream design task. Product decisions for held Delete and right-click vertex rollback are recorded with the consumer simplification review.
+The owner-lock API remains until pirana migrates safely. The Vectors dynamic-controls gap remains an explicit upstream design task.
+
+The held-Delete suppression remains in the integration pending a separate ROI deletion-protection
+design. A future change may map Pirana's logical ROI lock to napari's `LayerLock.DELETION`, but it
+must preserve `layer.editable`, define how the napari lock action synchronizes with the ROI panel,
+and test layer-list notifications, selection restoration, direct controller deletion, and
+undo/redo. Do not remove the global suppression as part of that work.
 
 ## Next Steps
 

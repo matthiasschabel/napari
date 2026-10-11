@@ -247,3 +247,43 @@ def test_text_with_non_empty_constant_string():
     # We want row, column coordinates so drop 3rd dimension and flip.
     actual_position = text_node.pos[:, 1::-1]
     np.testing.assert_allclose(actual_position, expected_position)
+
+
+def test_draw_outline_replaces_faces_off_slice_and_hides_on_axis_change(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        'napari._vispy.layers.base.get_max_texture_sizes', lambda: (4096, 4096)
+    )
+    layer = Shapes(ndim=3)
+    visual = VispyShapesLayer(layer, font_info=FontInfo())
+    layer.mode = 'add_polygon'
+    for position in [(0, 10, 10), (0, 10, 40), (0, 40, 40)]:
+        for event_type, callback in [
+            ('mouse_move', mouse_move_callbacks),
+            ('mouse_press', mouse_press_callbacks),
+            ('mouse_release', mouse_release_callbacks),
+        ]:
+            callback(
+                layer,
+                read_only_mouse_event(
+                    type=event_type, position=position, pos=position[-2:]
+                ),
+            )
+    assert visual.node.shape_faces.visible
+    layer._slice_dims(Dims(ndim=3, point=(1, 0, 0)))
+    assert not visual.node.shape_faces.visible
+    vertices, faces = layer._outline_shapes()
+    np.testing.assert_allclose(
+        visual.node.shape_highlights.mesh_data.get_vertices(), vertices
+    )
+    np.testing.assert_array_equal(
+        visual.node.shape_highlights.mesh_data.get_faces(), faces
+    )
+    assert visual.node.highlight_vertices.visible
+    layer._slice_dims(Dims(ndim=3, order=(2, 0, 1)))
+    assert not visual.node.shape_faces.visible
+    assert not visual.node.shape_highlights.visible
+    assert not visual.node.highlight_vertices.visible
+    layer._slice_dims(Dims(ndim=3))
+    assert visual.node.shape_faces.visible

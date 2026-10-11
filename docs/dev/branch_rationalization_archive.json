@@ -153,6 +153,66 @@
       "archive_ref": "refs/archive/2026-09-19/wip/roi-hole-overlays",
       "action": "archive local branch and remove its clean worktree",
       "status": "removed; archive ref verified"
+    },
+    {
+      "branch": "perf/skip-identity-unit-conversion",
+      "sha": "3e62d2dd883b1a0094bb1e1a150744d6c4de093f",
+      "in_integration": true,
+      "pr": 9411,
+      "patch_bytes": null,
+      "reverse_applies_to_production": null,
+      "reason": "Merged upstream as #9411 on 2026-09-23; in integration via the upstream merge.",
+      "archive_ref": "refs/archive/2026-09-24/perf/skip-identity-unit-conversion",
+      "action": "archive local branch, remove worktree, delete origin copy if any",
+      "status": "removed; archive ref verified"
+    },
+    {
+      "branch": "fix/qtviewer-prepopulated-model",
+      "sha": "d96e450cc22ac9d92408c79d4e8101e85c64283f",
+      "in_integration": true,
+      "pr": 9533,
+      "patch_bytes": null,
+      "reverse_applies_to_production": null,
+      "reason": "Merged upstream as #9533 on 2026-09-23; in integration via the upstream merge. origin tip also archived.",
+      "archive_ref": "refs/archive/2026-09-24/fix/qtviewer-prepopulated-model",
+      "action": "archive local branch, remove worktree, delete origin copy if any",
+      "status": "removed; archive ref verified"
+    },
+    {
+      "branch": "fix/shapes-polygon-right-click-remove-vertex",
+      "sha": "6ea32193b36c27ac6c9b8f0066165de485ff2f13",
+      "in_integration": false,
+      "pr": 9421,
+      "patch_bytes": null,
+      "reverse_applies_to_production": null,
+      "reason": "PR #9421 closed; integration removed the fork right-click rollback in f8aa854ed.",
+      "archive_ref": "refs/archive/2026-09-24/fix/shapes-polygon-right-click-remove-vertex",
+      "action": "archive local branch, remove worktree, delete origin copy if any",
+      "status": "removed; archive ref verified"
+    },
+    {
+      "branch": "maintenance/napari-rationalization",
+      "sha": "e692b25cff236935eead7e363bfcfb4542f011e0",
+      "in_integration": true,
+      "pr": null,
+      "patch_bytes": null,
+      "reverse_applies_to_production": null,
+      "reason": "Merged into integration (e692b25cf).",
+      "archive_ref": "refs/archive/2026-09-24/maintenance/napari-rationalization",
+      "action": "archive local branch, remove worktree, delete origin copy if any",
+      "status": "removed; archive ref verified"
+    },
+    {
+      "branch": "feature/shapes-drawing-order",
+      "sha": "c52b5a150d7746607e299b6de749d92b9a4bc67a",
+      "in_integration": true,
+      "pr": null,
+      "patch_bytes": null,
+      "reverse_applies_to_production": null,
+      "reason": "Superseded by open #9275; its remaining commits are present in integration.",
+      "archive_ref": "refs/archive/2026-09-24/feature/shapes-drawing-order",
+      "action": "archive local branch, remove worktree, delete origin copy if any",
+      "status": "removed; archive ref verified"
     }
   ]
 }

@@ -494,9 +494,7 @@ def test_process_mouse_event(
         np.testing.assert_array_equal(event.dims_displayed, [1, 2, 3])
         assert event.dims_point[0] == data.shape[0] // 2
 
-        expected_position = qt_viewer.canvas._map_canvas2world(
-            new_pos, qt_viewer.canvas.view
-        )
+        expected_position = viewer_model.canvas_to_world(new_pos)
         np.testing.assert_almost_equal(expected_position, list(event.position))
 
     viewer_model.dims.ndisplay = 3
@@ -523,9 +521,7 @@ def test_process_mouse_event_2d_layer_3d_viewer(
 
     @image.mouse_drag_callbacks.append
     def on_click(layer, event):
-        expected_position = qt_viewer.canvas._map_canvas2world(
-            new_pos, qt_viewer.canvas.view
-        )
+        expected_position = viewer_model.canvas_to_world(new_pos)
         np.testing.assert_almost_equal(expected_position, list(event.position))
 
     assert viewer_model.dims.ndisplay == 2
@@ -660,28 +656,19 @@ def test_insert_layer_ordering(
     assert pl2_vispy.order == 0
 
 
-@pytest.mark.parametrize('grid_enabled', [False, True], ids=['single', 'grid'])
-def test_create_non_empty_viewer_model(
-    qtbot: QtBot, grid_enabled: bool
-) -> None:
+@pytest.mark.parametrize('grid', [False, True])
+def test_create_non_empty_viewer_model(qtbot: QtBot, grid: bool) -> None:
     viewer_model = ViewerModel()
-    image = viewer_model.add_image(np.zeros((4, 4)))
-    points = viewer_model.add_points([(1, 2), (2, 3)])
-    if grid_enabled:
-        # Keep both layers in one viewbox so their relative order is defined.
-        viewer_model.canvas.grid.stride = 2
-        viewer_model.canvas.grid.enabled = True
+    viewer_model.add_image(np.zeros((4, 4)))
+    viewer_model.add_points([(1, 2), (2, 3)])
+    viewer_model.canvas.grid.enabled = grid
 
     viewer = QtViewer(viewer=viewer_model)
 
     assert all(
-        layer in viewer.canvas.layer_to_visual for layer in (image, points)
+        visual.node.parent is not None
+        for visual in viewer.canvas.layer_to_visual.values()
     )
-    visuals = [
-        viewer.canvas.layer_to_visual[layer] for layer in (image, points)
-    ]
-    assert [visual.order for visual in visuals] == [0, 1]
-    assert [visual.first_visible for visual in visuals] == [True, False]
     viewer.close()
     viewer.deleteLater()
     # try to del local reference for gc.

@@ -1689,6 +1689,28 @@ def test_removing_selected_shapes_mid_draw_cancels_the_draw():
     assert layer.nshapes == 0
 
 
+def test_removing_an_earlier_shape_mid_draw_finishes_the_draw():
+    from napari.layers.shapes._shapes_mouse_bindings import (
+        initiate_polygon_draw,
+    )
+
+    layer = Shapes(np.array([[[0, 0], [0, 1], [1, 1], [1, 0]]]))
+    layer.mode = 'add_polygon'
+    initiate_polygon_draw(layer, np.array([2.0, 2.0]))
+    # three placed vertices plus the trailing cursor vertex
+    placed = np.array([[2.0, 2.0], [2.0, 5.0], [5.0, 5.0]])
+    layer._data_view.edit_staged(1, np.concatenate([placed, [[4.0, 4.0]]]))
+    layer.events.data = Mock()
+
+    layer.remove([0])
+
+    assert layer._is_creating is False
+    assert layer.shape_type == ['polygon']
+    np.testing.assert_array_equal(layer.data[0], placed)
+    actions = [c[1]['action'] for c in layer.events.data.call_args_list]
+    assert ActionType.ADDED in actions
+
+
 def test_removing_selected_shapes():
     """Test removing selected shapes."""
     np.random.seed(0)
@@ -2749,6 +2771,25 @@ def test_to_labels_3D():
     assert np.array_equal(np.unique(labels), [0, 1, 2, 3])
 
 
+def test_to_labels_and_masks_in_3d_display():
+    data = [
+        [[0, 100, 100], [0, 100, 200], [0, 200, 200], [0, 200, 100]],
+        [[1, 125, 125], [1, 125, 175], [1, 175, 175], [1, 175, 125]],
+        [[2, 100, 100], [2, 100, 200], [2, 200, 200], [2, 200, 100]],
+    ]
+    layer = Shapes(np.array(data), shape_type='polygon')
+    labels_2d = layer.to_labels(labels_shape=(3, 300, 300))
+    masks_2d = layer.to_masks(mask_shape=(3, 300, 300))
+
+    layer._slice_dims(Dims(ndim=3, ndisplay=3))
+    np.testing.assert_array_equal(
+        layer.to_labels(labels_shape=(3, 300, 300)), labels_2d
+    )
+    np.testing.assert_array_equal(
+        layer.to_masks(mask_shape=(3, 300, 300)), masks_2d
+    )
+
+
 def test_add_single_shape_consistent_properties():
     """Test adding a single shape ensures correct number of added properties"""
     data = [
@@ -3083,3 +3124,63 @@ def test_outline_not_drawn_off_slice():
     layer.selected_data = set()
     layer._value = (0, None)
     assert layer._outline_shapes() == (None, None)  # hover-only path
+
+
+def test_rectangle_at_fractional_slice_shown_on_nearest_slice():
+    layer = Shapes(
+        [[[0.6, 10, 10], [0.6, 10, 40], [0.6, 40, 40], [0.6, 40, 10]]],
+        shape_type='rectangle',
+    )
+
+    layer._slice_dims(Dims(ndim=3, point=(0.6, 0, 0)))
+    assert layer.get_value((0.6, 20, 30)) == (0, None)
+
+    layer._slice_dims(Dims(ndim=3, point=(0, 0, 0)))
+    assert layer.get_value((0, 20, 30)) == (None, None)
+
+
+def test_paused_draw_dashed_outline_scales_with_zoom():
+    from napari.utils._test_utils import read_only_mouse_event
+    from napari.utils.interactions import (
+        mouse_move_callbacks,
+        mouse_press_callbacks,
+    )
+
+    layer = Shapes(ndim=3, scale=(1, 2, 2))
+    layer.mode = 'add_polyline'
+    mouse_press_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_press', position=(0, 0, 0), pos=(0, 0)
+        ),
+    )
+    mouse_move_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_move', position=(0, 0, 200), pos=(200, 0)
+        ),
+    )
+    solid_vertices, solid_triangles = layer._outline_shapes()
+    assert len(solid_triangles) > 0
+    layer._slice_dims(Dims(ndim=3, point=(1, 0, 0)))
+    for scale_factor in [2, 1, 4]:
+        layer.scale_factor = scale_factor
+        vertices, triangles = layer._outline_shapes()
+        quads = vertices.reshape((-1, 4, 2))
+        # Every full dash is eight screen pixels long, separated by eight pixels.
+        lengths = quads[:-1, 2, 0] - quads[:-1, 0, 0]
+        gaps = quads[1:, 0, 0] - quads[:-1, 2, 0]
+        np.testing.assert_allclose(lengths / layer._normalized_scale_factor, 8)
+        np.testing.assert_allclose(gaps / layer._normalized_scale_factor, 8)
+        np.testing.assert_allclose(
+            np.abs(quads[:, 1, 1] - quads[:, 0, 1])
+            / layer._normalized_scale_factor,
+            2 * layer._highlight_width,
+        )
+        assert len(triangles) == 2 * len(quads)
+        assert np.all(triangles < len(vertices))
+    layer._slice_dims(Dims(ndim=3, point=(0, 0, 0)))
+    layer.scale_factor = 1
+    vertices, triangles = layer._outline_shapes()
+    np.testing.assert_allclose(vertices, solid_vertices)
+    np.testing.assert_array_equal(triangles, solid_triangles)

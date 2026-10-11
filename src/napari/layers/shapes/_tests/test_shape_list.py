@@ -577,3 +577,34 @@ def test_proper_shape_position(
         sl._mesh.displayed_triangles,
         triangles_slice + slice_ * simple_rectangle.vertices_count,
     )
+
+
+def test_edit_new_type_keeps_ndisplay():
+    data = np.array([[0, 0, 0], [0, 10, 0], [0, 10, 10]])
+    shape_list = ShapeList(ndisplay=3)
+    shape_list.add(Path(data, ndisplay=3))
+
+    shape_list.edit(0, data, new_type=Polygon)
+
+    assert isinstance(shape_list.shapes[0], Polygon)
+    assert shape_list.shapes[0].ndisplay == 3
+
+
+def test_staged_shape_reslices_without_aggregate_geometry():
+    data = np.array([[0, 0, 0], [0, 10, 0], [0, 10, 10]])
+    shape_list = ShapeList()
+    shape_list.slice_key = [0]
+    index = shape_list.add_staged(
+        Path(data),
+        face_color=np.array([1, 0, 0, 1]),
+        edge_color=np.array([0, 1, 0, 1]),
+    )
+    shape_list.edit_staged(index, data, new_type=Polygon)
+    for slice_key in [[1], [0]]:
+        shape_list.slice_key = slice_key
+        assert len(shape_list.displayed_vertices) == 0
+        assert len(shape_list._mesh.displayed_triangles) == 0
+    assert shape_list.staged_index == index
+    np.testing.assert_allclose(shape_list.data[index], data)
+    shape_list.commit_staged(index)
+    np.testing.assert_allclose(shape_list.displayed_vertices, data[:, 1:])
