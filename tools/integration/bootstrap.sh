@@ -49,8 +49,8 @@ else
   uv venv --quiet --python "$py" --prompt napari "$root/.venv"
 fi
 # Also run when .venv already exists, so dependency changes from a pull get picked up.
-log "installing napari (editable) with pyqt6 and testing extras"
-VIRTUAL_ENV=$root/.venv uv pip install --quiet -e "$root[pyqt6,testing]"
+log "installing napari (editable) with pyqt6 and testing extras, plus ruff"
+VIRTUAL_ENV=$root/.venv uv pip install --quiet -e "$root[pyqt6,testing]" ruff
 
 # A new worktree has no _version.py, because setuptools-scm only writes it at install time.
 if [[ -d $stock ]]; then

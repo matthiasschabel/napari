@@ -1,7 +1,7 @@
 # Napari Rendering Performance Analysis
 
-**Status:** Active  
-**Last updated:** 2026-08-16  
+**Status:** Deferred (P0/P1 landed in integration; later stages postponed. The six `perf/*` branches that carried P0/P1 were archived on 2026-10-11 under `refs/archive/2026-10-11/`.)  
+**Last updated:** 2026-10-11  
 **Scope:** Points, Shapes, Vectors, Image, and Labels rendering; layer-count and primitive-count scaling
 
 ## Context

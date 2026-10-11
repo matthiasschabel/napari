@@ -62,6 +62,22 @@ Worktree and PR-branch maintenance against upstream/main d6a4ccb8; no new upstre
 - Three worktrees under `napari-feat/` hold branches with no PR whose tips are already in integration: `colormap-inf-colors`, `gpu-exceptional-colors`, `gl-exceptional-probe`. They are redundant unless more work is planned on them.
 - `napari-restore-defaults` moved to `napari-feat/settings-reset-announces` (#9328). The compositional branches took integration the same day; see [the model boundary](compositional_model_boundary.md).
 
+Second pass the same day, plan-reviewed by Codex (gpt-6-astra, medium) under collaborative refinement; all four findings accepted (lease-protected fork deletion, an explicit retained category, per-note status judgment, bootstrap-level ruff).
+
+- The six `perf/*` branches (`keep-extent-cache-across-slices`, `layer-scaling-benchmarks`, `mesh-shader-reuse`, `points-vectors-hide-empty-subvisuals`, `points-viewport-culling`, `scalar-field-transform-reuse`) are all landed in integration: every production hunk is present line for line, and the only differences are integration's later evolution (the `qt_viewer.py` `extent=False` call now carries a comment; `vectors.py` imports changed; the Mesh-based Vectors test in `mesh-shader-reuse` was replaced when integration moved to `VectorsVisual`). Reverse-apply failed for all six only because of that context drift. Archived at `refs/archive/2026-10-11/<branch>`; local deletion pending (see below).
+- `feature/custom-mode-cursors`, `feature/shapes-preserve-lasso-vertices`, `fix/dims-lock-active-axis` are ancestors of integration with no PR. Archived at `refs/archive/2026-10-11/<branch>`; local deletion pending.
+- Fork-only branches of closed PRs `feature/dims-point-transition` (#9439), `feature/shapes-highlight-slice-gate` (#9248), `fix/item-view-delete-autorepeat` (#9366): live fork tips confirmed equal to `refs/pull/<N>/head` by `git ls-remote`; archived at `refs/archive/2026-10-11/<branch>`; fork deletion pending, to be done with `git push --force-with-lease=refs/heads/<branch>:<archived sha> origin :refs/heads/<branch>` so a tip that moved after archiving refuses.
+- Retained pending a decision or dependency, not candidates for deletion: `feature/playback-rate-mode-preferences-row` (one commit stacked on #9326, no PR yet), `feature/tabular-numerals-host-app` (#9643 closed; archive candidate), and the three no-PR worktrees whose tips are in integration (`colormap-inf-colors`, `gpu-exceptional-colors`, `gl-exceptional-probe`).
+- Docs: `zulip_shapes_slicing_draft.md` and `shapes_projection_mode_issue_draft.md` set to Deferred pending "post or drop"; `napari-performance-analysis.md` set to Deferred with its P0/P1 landing recorded; `upstreaming_handoff_notes.md` moved out of tracked docs into the gitignored `docs/dev/handoffs/` (its open PR threads are tracked in this inventory; its orientation-labels thread closed with #9571/#9572). The draw-pause family notes stay Active while #9636, #9637 and #9638 are open.
+- Environment: `tools/integration/bootstrap.sh` now installs `ruff` into `.venv`; the README records that `-p no:napari` cannot be used in-tree and that only the data-model suite needs Python 3.13.
+- Pending local deletions (the agent's permission mode refused them; tips are all archived):
+
+```
+cd ~/GitHub/napari
+git branch -D perf/keep-extent-cache-across-slices perf/layer-scaling-benchmarks perf/mesh-shader-reuse perf/points-vectors-hide-empty-subvisuals perf/points-viewport-culling perf/scalar-field-transform-reuse feature/custom-mode-cursors feature/shapes-preserve-lasso-vertices fix/dims-lock-active-axis
+for b in feature/dims-point-transition feature/shapes-highlight-slice-gate fix/item-view-delete-autorepeat; do git push --force-with-lease=refs/heads/$b:$(git rev-parse refs/archive/2026-10-11/$b) origin :refs/heads/$b; done
+```
+
 ### Sync check (2026-10-09)
 
 Merged upstream/main (d6a4ccb8) into integration. Three carried PRs had landed upstream, and the conflicts were reconciled as follows:
@@ -145,3 +161,5 @@ undo/redo. Do not remove the global suppression as part of that work.
 ## Next Steps
 
 After each upstream merge, inspect its integration delta, update the consumer compatibility boundary, run the relevant stock/fork tests, and retire the landed topic. Keep this inventory current rather than opening another competing assembly branch.
+
+Next cross-repo task: move the pirana-gui, pirana-lab and ohsu-projects pins off `e33f37a6a` (which still contains the compositional model) by publishing a current integration commit to `private` and advancing the three consumers' dependency URLs, uv source revisions, locks and metadata pins together; see Deferred Work in [the model boundary](compositional_model_boundary.md).

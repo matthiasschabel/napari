@@ -1,7 +1,7 @@
 # Draft issue: Shapes ignores thick slicing
 
-**Status:** Active
-**Last updated:** 2026-08-25
+**Status:** Deferred (never filed; 2026-10-11: user to decide post or drop)
+**Last updated:** 2026-10-11
 **Scope:** Draft for a new napari issue. Independent of napari#9207.
 Refined against a codex pass; dispositions at the foot of this file.
 

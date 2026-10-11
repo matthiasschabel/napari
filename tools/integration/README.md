@@ -31,6 +31,12 @@ It ends by printing the installed napari version. To check the install:
 .venv/bin/napari          # opens the viewer
 ```
 
+Do not pass `-p no:napari` inside this tree: `src/napari/conftest.py` has an autouse fixture
+that needs the napari pytest plugin, so every test errors at setup without it. The experimental
+data-model suite on the compositional worktrees additionally needs Python 3.13 or newer
+(`copy.replace`); integration carries no data-model payload, so its `.venv` can stay on 3.12.
+The bootstrap also installs `ruff` into `.venv`.
+
 Environment overrides:
 
 | Variable | Default | Purpose |

@@ -1,7 +1,7 @@
 # Zulip draft: Shapes and slicing
 
-**Status:** Active
-**Last updated:** 2026-08-25
+**Status:** Deferred (never posted; 2026-10-11: user to decide post or drop)
+**Last updated:** 2026-10-11
 **Scope:** Draft message for napari Zulip (#general or a Shapes-adjacent stream). Not posted.
 
 Intent: ask one question, supply just enough evidence to make it credible, and let the
