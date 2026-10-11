@@ -43,7 +43,10 @@ git -C ../napari-compositional-core merge --no-ff integration
 git -C ../napari-compositional-model merge --no-ff compositional-core
 ```
 
-Resolve conflicts normally and run the affected experimental tests. Keeping
+Resolve conflicts normally and run the affected experimental tests. The
+data-model suite needs Python 3.13 or newer (`copy.replace`), and `-p no:napari`
+cannot be used inside this tree because `src/napari/conftest.py` has an autouse
+fixture that depends on the napari pytest plugin. Keeping
 production fixes upstream of the model does not make those fixes immune to
 interactions with experimental behavior.
 
