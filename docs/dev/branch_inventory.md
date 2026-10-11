@@ -1,7 +1,7 @@
 # Production fork branch inventory
 
 **Status:** Active
-**Last updated:** 2026-10-09
+**Last updated:** 2026-10-11
 **Scope:** napari integration, upstream topic branches, compositional experiments, and pirana consumers
 
 ## Context
@@ -49,6 +49,18 @@ When these merge, reconcile the integration delta rather than simply dropping it
 - #9563 reports ADDED `data_indices` counted from the end (`(-2, -1)`), matching `Points.add`. Integration reports positive indices (`(2, 3)`). Pirana is indifferent: its ROI controller ignores ADDED indices and normalizes negative indices for other actions (checked 2026-09-26), so take whichever form upstream accepts.
 - #9565: integration adopted the PR's implementation verbatim on 2026-09-27 (d47c2b4e1), replacing its own read-back (8fa195756). Nothing to reconcile when it merges.
 - #9442/#9568 add `Dims.axis_locked`, which is separate from integration's owner-lock API that pirana consumes.
+
+### Sync check (2026-10-11)
+
+Worktree and PR-branch maintenance against upstream/main d6a4ccb8; no new upstream merge.
+
+- The 2026-10-09 entry below overstated the local cleanup. The 15 fork branches were deleted, but `refs/archive/2026-10-09/*` had not been created, and three local branches survived: `fix/shapes-remove-selected-mid-draw` and `agent/tabular-numerals-window-scope` (each with a worktree) and `fix/shapes-slice-key-rounding` (two commits behind its merged head). The archive refs now exist, fetched from `refs/pull/<N>/head` and matching the table's tips. Stale `origin/*` tracking refs for the 15 were pruned. Deleting the three local branches and two worktrees is still pending.
+- Four open PRs were `CONFLICTING` on GitHub. Three were rebased locally onto upstream/main and are unpushed, so the fork and the PR still show the old heads: #9532 (`55a611e1d` → `6a1af8aab`, test-file conflict only, 13 passed), #9468 (`6e0b48f20` → `58f157c0e`, four commits collapse to one because the three were #9407's; byte-identical to integration in `qt_viewer_status_bar.py` and `test_app.py`; 35 passed, 4 skipped; the "Depends on #9407" line in the PR body is stale), #9335 (`afba63854` → `479f21827`, its #9396 commit dropped as merged; 150 passed, 2 skipped; its "Depends on #9396" line is stale; the dynamic-controls gap in [the controls decision](vectors_color_mapping_controls.md) is unchanged, so that note's hold on force-pushing still applies).
+- #9639 (`fix/shapes-rectangle-slice-key`) is superseded on upstream main: #9580 (`084f2f651`) routes `Rectangle` through `_slice_key_of`, and #9639's regression test passes against upstream's `rectangle.py` unchanged and fails when `_slice_key_of` truncates. Close the PR. The 2026-10-09 bullet on #9394 credits the `Rectangle` change to the wrong PR; it was #9580, building on #9394.
+- #9643 (`feature/tabular-numerals-host-app`) was closed unmerged by agreement that host-application font customization needs an architectural change first; the branch is not in integration. Archive candidate.
+- `feature/playback-rate-mode-preferences-row` has no PR; it is one commit stacked on #9326 and waits for it.
+- Three worktrees under `napari-feat/` hold branches with no PR whose tips are already in integration: `colormap-inf-colors`, `gpu-exceptional-colors`, `gl-exceptional-probe`. They are redundant unless more work is planned on them.
+- `napari-restore-defaults` moved to `napari-feat/settings-reset-announces` (#9328). The compositional branches took integration the same day; see [the model boundary](compositional_model_boundary.md).
 
 ### Sync check (2026-10-09)
 
