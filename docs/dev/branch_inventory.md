@@ -1,7 +1,7 @@
 # Production fork branch inventory
 
 **Status:** Active
-**Last updated:** 2026-10-11
+**Last updated:** 2026-10-12
 **Scope:** napari integration, upstream topic branches, compositional experiments, and pirana consumers
 
 ## Context
@@ -38,6 +38,16 @@ context menu.
 | [#9419](https://github.com/napari/napari/pull/9419) | `perf/shapes-staged-creation` | Retain pending upstream review; preserve production adaptations. |
 | [#9561](https://github.com/napari/napari/pull/9561) | `fix/nan-color-fast-math` | NaN `nan_color` stopgap; superseded by vispy#2796 once napari's minimum vispy includes it. |
 | [#9562](https://github.com/napari/napari/pull/9562) | `fix/shapes-finish-drawing-emit-order` | Clear `_is_creating` before `_finish_drawing` emits. |
+
+### Lasso branches, PR not yet opened: retain
+
+Cut from upstream main and cherry-picked onto integration on 2026-10-12. They replace `feature/shapes-preserve-lasso-vertices` and the lasso finishing changes in 4a5a842d2.
+
+| Branch | Purpose |
+|---|---|
+| `feature/shapes-lasso-vertex-retention` | Per-layer `lasso_rdp_epsilon` (0 keeps every vertex) for #9412, replacing the boolean `preserve_lasso_vertices`. Waits on a maintainer reply in #9412. |
+| `fix/shapes-lasso-release-after-finish` | Enter or Escape during a lasso drag raised `TypeError` on mouse release. |
+| `fix/shapes-lasso-repeated-closing-vertex` | A polygon drawn back onto its first vertex stored it twice. |
 | [#9563](https://github.com/napari/napari/pull/9563) | `feature/shapes-added-event-indices` | ADDED indices counted from the end, like Points; stacked on #9562. Differs from integration, see below. |
 | [#9564](https://github.com/napari/napari/pull/9564) | `fix/shapes-data-setter-scalar-shape-type` | Broadcast a scalar `shape_type` in the data setter. |
 | [#9565](https://github.com/napari/napari/pull/9565) | `fix/tiled-image-keeps-state-on-retile` | Tiled image keeps settings, GL state and filters across a retile. Integration carries this exact change. |
@@ -77,7 +87,7 @@ suites 95 passed, 23 skipped; model and overlay suites in the model boundary not
 Second pass the same day, plan-reviewed by Codex (gpt-6-astra, medium) under collaborative refinement; all four findings accepted (lease-protected fork deletion, an explicit retained category, per-note status judgment, bootstrap-level ruff).
 
 - The six `perf/*` branches (`keep-extent-cache-across-slices`, `layer-scaling-benchmarks`, `mesh-shader-reuse`, `points-vectors-hide-empty-subvisuals`, `points-viewport-culling`, `scalar-field-transform-reuse`) are all landed in integration: every production hunk is present line for line, and the only differences are integration's later evolution (the `qt_viewer.py` `extent=False` call now carries a comment; `vectors.py` imports changed; the Mesh-based Vectors test in `mesh-shader-reuse` was replaced when integration moved to `VectorsVisual`). Reverse-apply failed for all six only because of that context drift. Archived at `refs/archive/2026-10-11/<branch>`; local deletion pending (see below).
-- `feature/custom-mode-cursors`, `feature/shapes-preserve-lasso-vertices`, `fix/dims-lock-active-axis` are ancestors of integration with no PR. Archived at `refs/archive/2026-10-11/<branch>`; local deletion pending.
+- `feature/custom-mode-cursors`, `feature/shapes-preserve-lasso-vertices` (since superseded by the lasso branches above), `fix/dims-lock-active-axis` are ancestors of integration with no PR. Archived at `refs/archive/2026-10-11/<branch>`; local deletion pending.
 - Fork-only branches of closed PRs `feature/dims-point-transition` (#9439), `feature/shapes-highlight-slice-gate` (#9248), `fix/item-view-delete-autorepeat` (#9366): live fork tips confirmed equal to `refs/pull/<N>/head` by `git ls-remote`; archived at `refs/archive/2026-10-11/<branch>`; fork deletion pending, to be done with `git push --force-with-lease=refs/heads/<branch>:<archived sha> origin :refs/heads/<branch>` so a tip that moved after archiving refuses.
 - Retained pending a decision or dependency, not candidates for deletion: `feature/playback-rate-mode-preferences-row` (one commit stacked on #9326, no PR yet), `feature/tabular-numerals-host-app` (#9643 closed; archive candidate), and the three no-PR worktrees whose tips are in integration (`colormap-inf-colors`, `gpu-exceptional-colors`, `gl-exceptional-probe`).
 - Docs: `zulip_shapes_slicing_draft.md` and `shapes_projection_mode_issue_draft.md` set to Deferred pending "post or drop"; `napari-performance-analysis.md` set to Deferred with its P0/P1 landing recorded; `upstreaming_handoff_notes.md` moved out of tracked docs into the gitignored `docs/dev/handoffs/` (its open PR threads are tracked in this inventory; its orientation-labels thread closed with #9571/#9572). The draw-pause family notes stay Active while #9636, #9637 and #9638 are open.
@@ -144,7 +154,7 @@ Integration contains `upstream/main` (4b1f6dd77). Each open-PR and perf branch o
 ### Other production changes: retain
 
 - Navigation owner locks, draw exemptions, and active-axis recovery remain consumed by pirana. The fork's `DirectionLabelsOverlay` and `viewer.direction_labels` were removed on 2026-09-25 (pirana never used them). The `direction_edge_labels` helper was removed on 2026-09-27 after upstream declined it (#9571, #9572) as plugin territory; pirana now maps the labels itself in `pirana.viewer._orientation`. Open #9442 does not replace the owner-lock API; do not delete it based on that proposal.
-- Shapes drawing-event order, scalar shape-type assignment, lasso vertex preservation, and custom cursors remain production features/fixes.
+- Shapes drawing-event order, scalar shape-type assignment, per-layer lasso RDP epsilon, and custom cursors remain production features/fixes.
 - Exceptional GPU colors, infinity colormap fields, NaN handling, and the selector hook remain used by pirana's colormap workflow.
 - Rendering optimizations (extent/transform/shader reuse, empty subvisual suppression, viewport culling) remain separate production patches with measured evidence. No new rendering redesign is part of this maintenance pass.
 - #9335 is retained and complete for both control trees; the `edge_` rename it may trigger is a separate PR gated on maintainer feedback. See [the controls decision](vectors_color_mapping_controls.md). Do not invent a public Vectors API rename during cleanup.
