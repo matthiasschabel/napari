@@ -161,6 +161,10 @@ class Shapes(Layer):
     features : dict[str, array-like] or Dataframe-like
         Features table where each row corresponds to a shape and each column
         is a feature.
+    lasso_rdp_epsilon : float or None
+        Ramer-Douglas-Peucker epsilon used to simplify polygons drawn with the
+        lasso tool on this layer. 0 keeps every vertex. If None, the
+        ``rdp_epsilon`` experimental setting is used.
     metadata : dict
         Layer metadata.
     name : str
@@ -458,6 +462,7 @@ class Shapes(Layer):
         face_contrast_limits=None,
         feature_defaults=None,
         features=None,
+        lasso_rdp_epsilon=None,
         metadata=None,
         name=None,
         opacity=0.7,
@@ -517,7 +522,11 @@ class Shapes(Layer):
             highlight=Event,
             features=Event,
             feature_defaults=Event,
+            lasso_rdp_epsilon=Event,
         )
+
+        self._lasso_rdp_epsilon = None
+        self.lasso_rdp_epsilon = lasso_rdp_epsilon
 
         # Flag set to false to block thumbnail refresh
         self._allow_thumbnail_update = True
@@ -1612,6 +1621,7 @@ class Shapes(Layer):
                 'text': self.text.model_dump(),
                 'shape_type': self.shape_type,
                 'opacity': self.opacity,
+                'lasso_rdp_epsilon': self.lasso_rdp_epsilon,
                 'z_index': self.z_index,
                 'edge_width': self.edge_width,
                 'face_color': face_color,
@@ -1628,6 +1638,27 @@ class Shapes(Layer):
             }
         )
         return state
+
+    @property
+    def lasso_rdp_epsilon(self) -> float | None:
+        """float or None: RDP epsilon for polygons drawn with the lasso tool.
+
+        0 keeps every vertex. If None, the ``rdp_epsilon`` experimental
+        setting is used.
+        """
+        return self._lasso_rdp_epsilon
+
+    @lasso_rdp_epsilon.setter
+    def lasso_rdp_epsilon(self, epsilon: float | None) -> None:
+        if epsilon is not None:
+            epsilon = float(epsilon)
+            if epsilon < 0:
+                raise ValueError(
+                    f'lasso_rdp_epsilon must be None or non-negative, got {epsilon}'
+                )
+        if epsilon != self._lasso_rdp_epsilon:
+            self._lasso_rdp_epsilon = epsilon
+            self.events.lasso_rdp_epsilon()
 
     @property
     def _view_indices(self):
@@ -2744,11 +2775,11 @@ class Shapes(Layer):
             if self._mode in {Mode.ADD_POLYGON, Mode.ADD_POLYGON_LASSO}:
                 vertices = self._data_view.shapes[index].data
                 if self._mode == Mode.ADD_POLYGON_LASSO:
+                    epsilon = self.lasso_rdp_epsilon
+                    if epsilon is None:
+                        epsilon = get_settings().experimental.rdp_epsilon
                     prev_vertices = len(vertices)
-                    vertices = rdp(
-                        vertices,
-                        epsilon=get_settings().experimental.rdp_epsilon,
-                    )
+                    vertices = rdp(vertices, epsilon=epsilon)
                     if len(vertices) <= 3 and prev_vertices > 3:
                         # https://github.com/napari/napari/issues/7903
                         show_warning(

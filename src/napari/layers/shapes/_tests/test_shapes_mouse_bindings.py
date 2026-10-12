@@ -403,6 +403,57 @@ def test_polygon_lasso_tablet(create_known_shapes_layer):
     assert layer.selected_data == {n_shapes}
 
 
+@pytest.mark.parametrize(
+    ('lasso_rdp_epsilon', 'expected_added'), [(None, 0), (0, 1)]
+)
+def test_polygon_lasso_layer_rdp_epsilon_overrides_setting(
+    create_known_shapes_layer, lasso_rdp_epsilon, expected_added
+):
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+    desired_shape = np.array(
+        [[20, 30], [20, 50], [20, 70], [60, 70], [80, 20]]
+    )
+
+    # Large enough to collapse the polygon when the setting applies.
+    get_settings().experimental.rdp_epsilon = 100
+    layer.lasso_rdp_epsilon = lasso_rdp_epsilon
+    layer.mode = 'add_polygon_lasso'
+
+    event = read_only_mouse_event(
+        type='mouse_press',
+        is_dragging=True,
+        position=desired_shape[0],
+        pos=desired_shape[0],
+    )
+    mouse_press_callbacks(layer, event)
+
+    for coord in desired_shape[1:]:
+        event = read_only_mouse_event(
+            type='mouse_move',
+            is_dragging=True,
+            position=coord,
+            pos=coord,
+        )
+        mouse_move_callbacks(layer, event)
+
+    event = read_only_mouse_event(
+        type='mouse_release',
+        is_dragging=True,
+        position=desired_shape[-1],
+        pos=desired_shape[-1],
+    )
+    mouse_release_callbacks(layer, event)
+
+    assert len(layer.data) == n_shapes + expected_added
+    if expected_added:
+        assert np.array_equal(desired_shape, layer.data[-1])
+
+
+def test_lasso_rdp_epsilon_rejects_negative():
+    with pytest.raises(ValueError, match='non-negative'):
+        Shapes(lasso_rdp_epsilon=-1)
+
+
 def test_polygon_lasso_mouse(create_known_shapes_layer):
     """Draw polygon with mouse. Events in sequence are mouse press, release, move, press, release"""
     layer, n_shapes, _known_non_shape = create_known_shapes_layer
