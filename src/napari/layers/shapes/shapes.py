@@ -2781,6 +2781,10 @@ class Shapes(Layer):
                     prev_vertices = len(vertices)
                     vertices = rdp(vertices, epsilon=epsilon)
                     if len(vertices) <= 3 and prev_vertices > 3:
+                        if self.lasso_rdp_epsilon is None:
+                            remedy = 'napari > Settings > Experimental > RDP epsilon'
+                        else:
+                            remedy = "this layer's lasso_rdp_epsilon"
                         # https://github.com/napari/napari/issues/7903
                         show_warning(
                             'Polygons must have three or more vertices. '
@@ -2788,8 +2792,7 @@ class Shapes(Layer):
                             'RDP algorithm, which may cause polygons '
                             'smaller than RDP epsilon to disappear. If  '
                             'you face issues drawing small polygons, '
-                            'try reducing napari > Settings > '
-                            'Experimental > RDP epsilon. ',
+                            f'try reducing {remedy}. ',
                         )
                 if len(vertices) <= 3:
                     self._data_view.remove(index)

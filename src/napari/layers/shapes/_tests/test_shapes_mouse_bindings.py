@@ -5,7 +5,10 @@ import pytest
 
 from napari.layers import Shapes
 from napari.layers.base._base_constants import ActionType
-from napari.layers.shapes import _shapes_key_bindings as key_bindings
+from napari.layers.shapes import (
+    _shapes_key_bindings as key_bindings,
+    shapes as shapes_module,
+)
 from napari.layers.shapes._shapes_constants import Box
 from napari.layers.shapes.shapes import Mode
 from napari.settings import get_settings
@@ -447,6 +450,51 @@ def test_polygon_lasso_layer_rdp_epsilon_overrides_setting(
     assert len(layer.data) == n_shapes + expected_added
     if expected_added:
         assert np.array_equal(desired_shape, layer.data[-1])
+
+
+@pytest.mark.parametrize(
+    ('lasso_rdp_epsilon', 'remedy'),
+    [(None, 'Experimental > RDP epsilon'), (100, "layer's lasso_rdp_epsilon")],
+)
+def test_polygon_lasso_too_small_warning_names_epsilon_in_force(
+    monkeypatch, lasso_rdp_epsilon, remedy
+):
+    show_warning = Mock()
+    monkeypatch.setattr(shapes_module, 'show_warning', show_warning)
+    get_settings().experimental.rdp_epsilon = 100
+    layer = Shapes(lasso_rdp_epsilon=lasso_rdp_epsilon)
+    layer.mode = 'add_polygon_lasso'
+    vertices = np.array([[20, 30], [20, 50], [20, 70], [60, 70], [80, 20]])
+
+    mouse_press_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_press',
+            is_dragging=True,
+            position=vertices[0],
+            pos=vertices[0],
+        ),
+    )
+    for coord in vertices[1:]:
+        mouse_move_callbacks(
+            layer,
+            read_only_mouse_event(
+                type='mouse_move', is_dragging=True, position=coord, pos=coord
+            ),
+        )
+    mouse_release_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_release',
+            is_dragging=True,
+            position=vertices[-1],
+            pos=vertices[-1],
+        ),
+    )
+
+    assert len(layer.data) == 0
+    show_warning.assert_called_once()
+    assert remedy in show_warning.call_args.args[0]
 
 
 def test_lasso_rdp_epsilon_rejects_negative():
