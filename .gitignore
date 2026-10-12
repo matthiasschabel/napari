@@ -222,3 +222,5 @@ agent-logs/
 !docs/
 docs/*
 !docs/dev/
+# Session handoffs are local working notes (agents-conventions).
+docs/dev/handoffs/
