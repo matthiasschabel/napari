@@ -41,7 +41,7 @@ context menu.
 | [#9563](https://github.com/napari/napari/pull/9563) | `feature/shapes-added-event-indices` | ADDED indices counted from the end, like Points; stacked on #9562. Differs from integration, see below. |
 | [#9564](https://github.com/napari/napari/pull/9564) | `fix/shapes-data-setter-scalar-shape-type` | Broadcast a scalar `shape_type` in the data setter. |
 | [#9565](https://github.com/napari/napari/pull/9565) | `fix/tiled-image-keeps-state-on-retile` | Tiled image keeps settings, GL state and filters across a retile. Integration carries this exact change. |
-| draft PR pending (branch pushed 2026-10-12) | `fix/cursor-viewbox-empty-tile` | `Cursor.viewbox` may be None over an empty grid viewbox again (#9431 regression found by the pirana-viewer GUI suite). Cut from upstream `fd9091739`; integration carries the commit by cherry-pick (`70a14824a`) because merging the branch would sync upstream past `d6a4ccb8`. |
+| [#9696](https://github.com/napari/napari/pull/9696) | `fix/cursor-viewbox-empty-tile` | `Cursor.viewbox` may be None over an empty grid viewbox again (#9431 regression found by the pirana-viewer GUI suite). Cut from upstream `fd9091739`; integration carries the commit by cherry-pick (`70a14824a`) because merging the branch would sync upstream past `d6a4ccb8`. |
 
 ### Upstream PRs that differ from integration
 
