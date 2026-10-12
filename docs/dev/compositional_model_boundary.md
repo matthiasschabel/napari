@@ -1,7 +1,7 @@
 # Production and compositional-model branch boundary
 
-**Status:** Implemented
-**Last updated:** 2026-09-19
+**Status:** Active (the 2026-09-19 separation is implemented; its reversal is decided, not done)
+**Last updated:** 2026-10-11
 **Scope:** napari `integration`, `compositional-core`, and `explore/compositional-data-model`; pirana consumers
 
 ## Context
@@ -79,10 +79,35 @@ the dependency URLs, uv source revisions, locks, and metadata checkout pins
 in pirana-gui, pirana-lab, and ohsu-projects together. Local branch separation
 does not itself change those pinned environments.
 
+## Decision of 2026-10-11
+
+The model returns to integration as an additive feature, `napari.experimental.data_model`,
+reversing the separation above. The September objection, no pirana consumer, still holds;
+the reason to reverse anyway is that integration is the branch that tracks upstream, so a
+feature carried there costs nothing in pirana and can move to pirana later if upstream
+declines it, whereas a feature parked in pirana first gains no upstream path. Conditions:
+
+- Scope is the compositional-core model: identity, fields, domains, sources, the coordinate
+  layer and the napari adapters. The progressive renderer (atlas, bricks, ladder, working set)
+  on the exploration branch is archived, not merged.
+- The coordinate layer is merged frozen. It is a less complete xarrayrf and will be replaced by
+  xarrayrf behind `_layer_coordinates` once xarrayrf's field representation settles; no xarrayrf
+  dependency is taken now.
+- An import-boundary test enforces that model modules import only NumPy and the standard
+  library and that only adapter modules import napari. Private napari state reached by an
+  adapter (MPR and the slicer) is listed in that test as a known upstream touch.
+- `DataSource` is canonical; pirana's `NDImageSource` adapts to it (pirana-lab,
+  `docs/dev/data_model_layering.md`).
+- No Python floor change. The model uses `dataclasses.replace`; the two `copy.replace`
+  assertions in `test_mri.py` are skipped below 3.13.
+
+After the merge, the one-way synchronization and both experimental worktrees are retired, and
+the branches archived under `refs/archive/<date>/`.
+
 ## Next Steps
 
-Keep experimental development downstream of integration. Reconsider production
-adoption only alongside a concrete pirana consumer and its acceptance tests.
+Perform the merge above as one reviewed change on integration, then move the pirana pins
+(Deferred Work).
 
 ### Verification on 2026-09-19
 
