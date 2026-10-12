@@ -1,5 +1,17 @@
+"""Import boundary of the data model, and the napari internals its adapters touch.
+
+Model modules never import napari's viewer subsystems (layers, components, Qt,
+vispy); shapely is optional and imported inside functions. Only the adapter
+modules (``_mpr``, ``_mpr_qt``, ``_layer_adapters``, ``_image_binding``,
+``_view_bridge``, ``_shapes_codec``) import the viewer, and the private napari
+names they rely on are checked by ``test_adapter_private_touches_still_exist``
+so an upstream sync that renames one fails here rather than at run time.
+"""
+
 import subprocess
 import sys
+
+import pytest
 
 
 def test_scientific_core_constructs_with_units_without_viewer_or_geometry():
@@ -72,3 +84,26 @@ assert not any(name in sys.modules for name in blocked)
         text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_adapter_private_touches_still_exist() -> None:
+    """Every private napari name the adapters use, in one place.
+
+    ``_mpr``: ``ViewerModel._layer_slicer`` and ``_update_layers``,
+    ``_LayerSlicer._force_sync``, ``Shapes._is_creating`` and the private
+    polygon model. ``_layer_adapters``: ``Layer._data_to_world``.
+    ``_mpr_qt``: ``QtViewer``.
+    """
+    pytest.importorskip('qtpy')
+    from napari._qt.qt_viewer import QtViewer
+    from napari.components import ViewerModel
+    from napari.layers import Image, Shapes
+    from napari.layers.shapes._shapes_models.polygon import Polygon
+
+    viewer = ViewerModel()
+    assert QtViewer is not None
+    assert Polygon is not None
+    assert callable(viewer._update_layers)
+    assert hasattr(viewer._layer_slicer, '_force_sync')
+    assert isinstance(Shapes._is_creating, property)
+    assert isinstance(Image._data_to_world, property)

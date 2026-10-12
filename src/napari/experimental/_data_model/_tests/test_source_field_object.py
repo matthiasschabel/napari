@@ -354,7 +354,12 @@ def test_field_rejects_non_callable_read_attribute() -> None:
         def read(self) -> None:
             return None
 
-    with pytest.raises(TypeError, match='read attribute must be callable'):
+    # Python 3.11's runtime protocol check already rejects a None-valued
+    # method member; 3.12+ defers to the explicit callable check.
+    with pytest.raises(
+        TypeError,
+        match=r'read attribute must be callable|does not satisfy DataSource',
+    ):
         Field('signal', NonCallableReadSource())  # type: ignore[arg-type]
 
 
@@ -370,8 +375,11 @@ def test_field_rejects_non_callable_level_shape_attribute() -> None:
         ) -> np.ndarray:
             return np.ones(2)[region]
 
+    # Python 3.11's runtime protocol check already rejects a None-valued
+    # method member; 3.12+ defers to the explicit callable check.
     with pytest.raises(
-        TypeError, match='level_shape attribute must be callable'
+        TypeError,
+        match=r'level_shape attribute must be callable|does not satisfy DataSource',
     ):
         Field('signal', NonCallableLevelShapeSource())  # type: ignore[arg-type]
 

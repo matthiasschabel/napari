@@ -1,5 +1,6 @@
 import copy
 import pickle
+import sys
 
 import numpy as np
 import pytest
@@ -113,19 +114,30 @@ def test_synthetic_mri_embedding_places_only_spatial_axes() -> None:
 
 def test_replace_preserves_fields_and_aux_values() -> None:
     obj = synthetic_mri()
-    renamed = copy.replace(obj, name='renamed')
+    renamed = obj.replace(name='renamed')
     assert renamed.name == 'renamed'
     assert sorted(renamed.fields) == sorted(obj.fields)
     assert renamed.metadata == obj.metadata
 
-    also_renamed = obj.replace(name='also renamed')
-    assert also_renamed.name == 'also renamed'
-    assert sorted(also_renamed.fields) == sorted(obj.fields)
+    echo_axis = obj.domain.axis('echo_time')
+    replaced_axis = echo_axis.replace(name='te')
+    assert replaced_axis.name == 'te'
+    assert list(replaced_axis.aux_values) == list(echo_axis.aux_values)
+    np.testing.assert_array_equal(replaced_axis.values, echo_axis.values)
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 13), reason='copy.replace is Python 3.13+'
+)
+def test_copy_replace_uses_the_replace_protocol() -> None:
+    obj = synthetic_mri()
+    renamed = copy.replace(obj, name='renamed')
+    assert renamed.name == 'renamed'
+    assert sorted(renamed.fields) == sorted(obj.fields)
 
     echo_axis = obj.domain.axis('echo_time')
     replaced_axis = copy.replace(echo_axis, name='te')
     assert replaced_axis.name == 'te'
-    assert list(replaced_axis.aux_values) == list(echo_axis.aux_values)
     np.testing.assert_array_equal(replaced_axis.values, echo_axis.values)
 
 
