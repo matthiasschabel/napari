@@ -33,9 +33,8 @@ It ends by printing the installed napari version. To check the install:
 
 Do not pass `-p no:napari` inside this tree: `src/napari/conftest.py` has an autouse fixture
 that needs the napari pytest plugin, so every test errors at setup without it. The experimental
-data-model suite on the compositional worktrees additionally needs Python 3.13 or newer
-(`copy.replace`); integration carries no data-model payload, so its `.venv` can stay on 3.12.
-The bootstrap also installs `ruff` into `.venv`.
+data-model suite (`src/napari/experimental/_data_model`) runs on the `.venv`; one test needs
+`copy.replace` and skips below Python 3.13. The bootstrap also installs `ruff` into `.venv`.
 
 Environment overrides:
 
@@ -47,7 +46,7 @@ Environment overrides:
 
 ### Optional extras
 
-- **Compositional-model remote.** Only needed for the data-model experiments:
+- **Private remote.** Where integration commits are published for the pirana pins:
   `git remote add private https://github.com/matthiasschabel/napari-compositional.git`
 - **Agent conventions.** `AGENTS.md` and `CLAUDE.md` are gitignored and come from the
   `agents-conventions` repo. Clone it beside this one, then:

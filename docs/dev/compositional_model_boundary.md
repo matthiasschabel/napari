@@ -1,6 +1,6 @@
 # Production and compositional-model branch boundary
 
-**Status:** Active (the 2026-09-19 separation is implemented; its reversal is decided, not done)
+**Status:** Implemented (separation 2026-09-19; reinstatement 2026-10-11)
 **Last updated:** 2026-10-11
 **Scope:** napari `integration`, `compositional-core`, and `explore/compositional-data-model`; pirana consumers
 
@@ -115,13 +115,32 @@ folded in):
   `copy.replace` assertions in `test_mri.py` for Python below 3.13, and the model suite runs on
   the fork's 3.11 floor before the merge is called compatible.
 
-After the merge, the one-way synchronization and both experimental worktrees are retired, and
-the branches archived under `refs/archive/<date>/`.
+The merge is `4679d2ef6` (compositional-core `ed3c22d66` into integration), followed by
+`22191fae0` (ignore handoffs now that `docs/dev` is tracked) and `f032e092e` (the floor guard,
+the 3.11 protocol-message tolerance and the private-touch inventory test). The one-way
+synchronization is retired. Both branches are archived at
+`refs/archive/2026-10-11/compositional-core` and
+`refs/archive/2026-10-11/explore/compositional-data-model`; the exploration branch is the only
+home of the progressive renderer. Deleting the two branches and their worktrees
+(`napari-compositional-core`, `napari-compositional-model`) is the user's step.
+
+### Verification on 2026-10-11
+
+- Model suite plus scene overlay tests on the integration `.venv` (Python 3.12): 590 passed,
+  1 skipped (the `copy.replace` test).
+- The same on a Python 3.11 environment with integration installed editable: 591 passed, twice
+  in a row. One earlier 3.11 run failed `test_mpr_direct_import_error_names_shapely_install`
+  once; it passed in isolation and in both full reruns, so it is recorded as unreproduced, not
+  fixed.
+- `test_mri.py` on the scipy-dev Python 3.14 environment: 9 passed, so the guarded
+  `copy.replace` test runs where it can.
+- Layer slicer, QtViewer and canvas suites on 3.12: see the inventory's sync-check entry.
+- Ruff check and format on the three edited test modules.
 
 ## Next Steps
 
-Perform the merge above as one reviewed change on integration, then move the pirana pins
-(Deferred Work).
+Move the pirana pins (Deferred Work). Keep `test_core_imports.py` green on every upstream sync;
+a failure there is the signal that an adapter's private touch moved.
 
 ### Verification on 2026-09-19
 

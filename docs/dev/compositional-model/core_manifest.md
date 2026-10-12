@@ -6,11 +6,11 @@
 file, export and test lists the extraction is executed and checked against.
 Companion to [core_split_design.md](core_split_design.md) section 2.
 
-The extraction below is complete. Its files remain on compositional-core and
-exploration, but were removed from production integration on 2026-09-19 because
-pirana has no current consumers. See [the branch boundary](../compositional_model_boundary.md)
-for the replacement synchronization policy. The original manifest and acceptance
-procedure below document the extraction snapshot.
+The extraction below is complete. Its files were removed from production integration on
+2026-09-19 because pirana had no consumer, and reinstated on 2026-10-11 as an additive feature
+of integration; see [the branch boundary](../compositional_model_boundary.md) for the
+conditions. The compositional-core and exploration branches are archived. The original manifest
+and acceptance procedure below document the extraction snapshot.
 
 ## Context
 

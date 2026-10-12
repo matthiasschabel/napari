@@ -54,6 +54,17 @@ When these merge, reconcile the integration delta rather than simply dropping it
 
 Worktree and PR-branch maintenance against upstream/main d6a4ccb8; no new upstream merge.
 
+Fourth pass the same day: the compositional data model returned to integration (`4679d2ef6`,
+merging compositional-core `ed3c22d66`; conditions and verification in
+[the model boundary](compositional_model_boundary.md)). `compositional-core` and
+`explore/compositional-data-model` are archived at `refs/archive/2026-10-11/` and the one-way
+sync is retired. Pending for the user: `git branch -D compositional-core
+explore/compositional-data-model` and `git worktree remove ../napari-compositional-core
+../napari-compositional-model`. The `.gitignore` now tracks `docs/dev` (the model's notes) and
+ignores `docs/dev/handoffs/`.
+Verification on the integration `.venv` after the merge: layer slicer, QtViewer and canvas
+suites 95 passed, 23 skipped; model and overlay suites in the model boundary note.
+
 - The 2026-10-09 entry below overstated the local cleanup. The 15 fork branches were deleted, but `refs/archive/2026-10-09/*` had not been created, and three local branches survived: `fix/shapes-remove-selected-mid-draw` and `agent/tabular-numerals-window-scope` (each with a worktree) and `fix/shapes-slice-key-rounding` (two commits behind its merged head). The archive refs now exist, fetched from `refs/pull/<N>/head` and matching the table's tips. Stale `origin/*` tracking refs for the 15 were pruned. Deleting the three local branches and two worktrees is still pending.
 - Four open PRs were `CONFLICTING` on GitHub. Three were rebased locally onto upstream/main and are unpushed, so the fork and the PR still show the old heads: #9532 (`55a611e1d` → `6a1af8aab`, test-file conflict only, 13 passed), #9468 (`6e0b48f20` → `58f157c0e`, four commits collapse to one because the three were #9407's; byte-identical to integration in `qt_viewer_status_bar.py` and `test_app.py`; 35 passed, 4 skipped; the "Depends on #9407" line in the PR body is stale), #9335 (`afba63854` → `479f21827`, its #9396 commit dropped as merged; 150 passed, 2 skipped; its "Depends on #9396" line is stale; the dynamic-controls gap in [the controls decision](vectors_color_mapping_controls.md) was closed the same day by a second commit, `9b9ae089e`, so the hold on force-pushing is lifted; push awaits the user).
 - #9639 (`fix/shapes-rectangle-slice-key`) is superseded on upstream main: #9580 (`084f2f651`) routes `Rectangle` through `_slice_key_of`, and #9639's regression test passes against upstream's `rectangle.py` unchanged and fails when `_slice_key_of` truncates. Close the PR. The 2026-10-09 bullet on #9394 credits the `Rectangle` change to the wrong PR; it was #9580, building on #9394.
