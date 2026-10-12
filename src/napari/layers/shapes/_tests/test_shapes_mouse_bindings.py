@@ -6,7 +6,10 @@ import pytest
 from napari.components import Dims
 from napari.layers import Shapes
 from napari.layers.base._base_constants import ActionType
-from napari.layers.shapes import _shapes_key_bindings as key_bindings
+from napari.layers.shapes import (
+    _shapes_key_bindings as key_bindings,
+    shapes as shapes_module,
+)
 from napari.layers.shapes._shapes_constants import Box
 from napari.layers.shapes.shapes import Mode
 from napari.settings import get_settings
@@ -961,9 +964,9 @@ def test_lasso_release_after_keyboard_finish(
     assert added == expected_events
 
 
-@pytest.mark.parametrize('preserve_lasso_vertices', [False, True])
+@pytest.mark.parametrize('lasso_rdp_epsilon', [None, 0])
 def test_lasso_return_to_first_vertex_is_stored_open(
-    create_known_shapes_layer, preserve_lasso_vertices
+    create_known_shapes_layer, lasso_rdp_epsilon
 ):
     layer, n_shapes, _known_non_shape = create_known_shapes_layer
     vertices = np.array(
@@ -976,7 +979,7 @@ def test_lasso_return_to_first_vertex_is_stored_open(
     )
 
     get_settings().experimental.rdp_epsilon = 1
-    layer.preserve_lasso_vertices = preserve_lasso_vertices
+    layer.lasso_rdp_epsilon = lasso_rdp_epsilon
     layer.mode = 'add_polygon_lasso'
     mouse_press_callbacks(
         layer,
@@ -1010,167 +1013,6 @@ def test_lasso_return_to_first_vertex_is_stored_open(
     assert layer.nshapes == n_shapes + 1
     np.testing.assert_allclose(layer.data[-1], vertices[:-1], rtol=0, atol=0)
     assert not np.array_equal(layer.data[-1][0], layer.data[-1][-1])
-
-
-@pytest.mark.parametrize(
-    ('preserve_lasso_vertices', 'expected_added'), [(False, 0), (True, 1)]
-)
-def test_polygon_lasso_preserves_sampled_vertices(
-    create_known_shapes_layer, preserve_lasso_vertices, expected_added
-):
-    layer, n_shapes, _known_non_shape = create_known_shapes_layer
-    desired_shape = np.array(
-        [[20, 30], [20, 50], [20, 70], [60, 70], [80, 20]]
-    )
-
-    get_settings().experimental.rdp_epsilon = 100
-    layer.preserve_lasso_vertices = preserve_lasso_vertices
-    layer.mode = 'add_polygon_lasso'
-
-    event = read_only_mouse_event(
-        type='mouse_press',
-        is_dragging=True,
-        position=desired_shape[0],
-        pos=desired_shape[0],
-    )
-    mouse_press_callbacks(layer, event)
-
-    for coord in desired_shape[1:]:
-        event = read_only_mouse_event(
-            type='mouse_move',
-            is_dragging=True,
-            position=coord,
-            pos=coord,
-        )
-        mouse_move_callbacks(layer, event)
-
-    event = read_only_mouse_event(
-        type='mouse_release',
-        is_dragging=True,
-        position=desired_shape[-1],
-        pos=desired_shape[-1],
-    )
-    mouse_release_callbacks(layer, event)
-
-    assert len(layer.data) == n_shapes + expected_added
-    if preserve_lasso_vertices:
-        assert np.array_equal(desired_shape, layer.data[-1])
-
-
-def test_preserve_lasso_vertices_event():
-    layer = Shapes()
-    changed = Mock()
-    layer.events.preserve_lasso_vertices.connect(changed)
-
-    layer.preserve_lasso_vertices = True
-
-    changed.assert_called_once()
-
-
-def test_preserve_lasso_vertices_requires_bool():
-    with pytest.raises(TypeError, match='must be a bool'):
-        Shapes(preserve_lasso_vertices=1)
-
-
-@pytest.mark.parametrize(
-    ('preserve_lasso_vertices', 'expected_added'), [(False, 0), (True, 1)]
-)
-def test_polygon_lasso_preserves_sampled_vertices(
-    create_known_shapes_layer, preserve_lasso_vertices, expected_added
-):
-    layer, n_shapes, _known_non_shape = create_known_shapes_layer
-    desired_shape = np.array(
-        [[20, 30], [20, 50], [20, 70], [60, 70], [80, 20]]
-    )
-
-    get_settings().experimental.rdp_epsilon = 100
-    layer.preserve_lasso_vertices = preserve_lasso_vertices
-    layer.mode = 'add_polygon_lasso'
-
-    event = read_only_mouse_event(
-        type='mouse_press',
-        is_dragging=True,
-        position=desired_shape[0],
-        pos=desired_shape[0],
-    )
-    mouse_press_callbacks(layer, event)
-
-    for coord in desired_shape[1:]:
-        event = read_only_mouse_event(
-            type='mouse_move',
-            is_dragging=True,
-            position=coord,
-            pos=coord,
-        )
-        mouse_move_callbacks(layer, event)
-
-    event = read_only_mouse_event(
-        type='mouse_release',
-        is_dragging=True,
-        position=desired_shape[-1],
-        pos=desired_shape[-1],
-    )
-    mouse_release_callbacks(layer, event)
-
-    assert len(layer.data) == n_shapes + expected_added
-    if preserve_lasso_vertices:
-        assert np.array_equal(desired_shape, layer.data[-1])
-
-
-def test_preserve_lasso_vertices_event():
-    layer = Shapes()
-    changed = Mock()
-    layer.events.preserve_lasso_vertices.connect(changed)
-
-    layer.preserve_lasso_vertices = True
-
-    changed.assert_called_once()
-
-
-def test_preserve_lasso_vertices_requires_bool():
-    with pytest.raises(TypeError, match='must be a bool'):
-        Shapes(preserve_lasso_vertices=1)
-
-
-def test_polygon_lasso_release_after_keyboard_finish(
-    create_known_shapes_layer,
-):
-    layer, n_shapes, _known_non_shape = create_known_shapes_layer
-    desired_shape = np.array([[20, 30], [10, 50], [60, 40]])
-
-    get_settings().experimental.rdp_epsilon = 0
-    layer.mode = 'add_polygon_lasso'
-
-    event = read_only_mouse_event(
-        type='mouse_press',
-        is_dragging=True,
-        position=desired_shape[0],
-        pos=desired_shape[0],
-    )
-    mouse_press_callbacks(layer, event)
-
-    for coord in desired_shape[1:]:
-        event = read_only_mouse_event(
-            type='mouse_move',
-            is_dragging=True,
-            position=coord,
-            pos=coord,
-        )
-        mouse_move_callbacks(layer, event)
-
-    key_bindings.finish_drawing_shape(layer)
-
-    event = read_only_mouse_event(
-        type='mouse_release',
-        is_dragging=True,
-        position=desired_shape[-1],
-        pos=desired_shape[-1],
-    )
-    mouse_release_callbacks(layer, event)
-
-    assert len(layer.data) == n_shapes + 1
-    assert np.array_equal(desired_shape, layer.data[-1])
-    assert not layer._is_creating
 
 
 @pytest.mark.parametrize(
@@ -1217,6 +1059,102 @@ def test_polygon_lasso_drops_repeated_first_vertex(
     assert len(layer.data) == n_shapes + expected_added
     if expected_added:
         assert np.array_equal(desired_shape[:-1], layer.data[-1])
+
+
+@pytest.mark.parametrize(
+    ('lasso_rdp_epsilon', 'expected_added'), [(None, 0), (0, 1)]
+)
+def test_polygon_lasso_layer_rdp_epsilon_overrides_setting(
+    create_known_shapes_layer, lasso_rdp_epsilon, expected_added
+):
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+    desired_shape = np.array(
+        [[20, 30], [20, 50], [20, 70], [60, 70], [80, 20]]
+    )
+
+    # Large enough to collapse the polygon when the setting applies.
+    get_settings().experimental.rdp_epsilon = 100
+    layer.lasso_rdp_epsilon = lasso_rdp_epsilon
+    layer.mode = 'add_polygon_lasso'
+
+    event = read_only_mouse_event(
+        type='mouse_press',
+        is_dragging=True,
+        position=desired_shape[0],
+        pos=desired_shape[0],
+    )
+    mouse_press_callbacks(layer, event)
+
+    for coord in desired_shape[1:]:
+        event = read_only_mouse_event(
+            type='mouse_move',
+            is_dragging=True,
+            position=coord,
+            pos=coord,
+        )
+        mouse_move_callbacks(layer, event)
+
+    event = read_only_mouse_event(
+        type='mouse_release',
+        is_dragging=True,
+        position=desired_shape[-1],
+        pos=desired_shape[-1],
+    )
+    mouse_release_callbacks(layer, event)
+
+    assert len(layer.data) == n_shapes + expected_added
+    if expected_added:
+        assert np.array_equal(desired_shape, layer.data[-1])
+
+
+@pytest.mark.parametrize(
+    ('lasso_rdp_epsilon', 'remedy'),
+    [(None, 'Experimental > RDP epsilon'), (100, "layer's lasso_rdp_epsilon")],
+)
+def test_polygon_lasso_too_small_warning_names_epsilon_in_force(
+    monkeypatch, lasso_rdp_epsilon, remedy
+):
+    show_warning = Mock()
+    monkeypatch.setattr(shapes_module, 'show_warning', show_warning)
+    get_settings().experimental.rdp_epsilon = 100
+    layer = Shapes(lasso_rdp_epsilon=lasso_rdp_epsilon)
+    layer.mode = 'add_polygon_lasso'
+    vertices = np.array([[20, 30], [20, 50], [20, 70], [60, 70], [80, 20]])
+
+    mouse_press_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_press',
+            is_dragging=True,
+            position=vertices[0],
+            pos=vertices[0],
+        ),
+    )
+    for coord in vertices[1:]:
+        mouse_move_callbacks(
+            layer,
+            read_only_mouse_event(
+                type='mouse_move', is_dragging=True, position=coord, pos=coord
+            ),
+        )
+    mouse_release_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_release',
+            is_dragging=True,
+            position=vertices[-1],
+            pos=vertices[-1],
+        ),
+    )
+
+    assert len(layer.data) == 0
+    show_warning.assert_called_once()
+    assert remedy in show_warning.call_args.args[0]
+
+
+def test_lasso_rdp_epsilon_rejects_negative():
+    with pytest.raises(ValueError, match='non-negative'):
+        Shapes(lasso_rdp_epsilon=-1)
 
 
 def test_polygon_lasso_mouse(create_known_shapes_layer):

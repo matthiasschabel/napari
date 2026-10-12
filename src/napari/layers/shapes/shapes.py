@@ -162,15 +162,16 @@ class Shapes(Layer):
     features : dict[str, array-like] or Dataframe-like
         Features table where each row corresponds to a shape and each column
         is a feature.
+    lasso_rdp_epsilon : float or None
+        Ramer-Douglas-Peucker epsilon used to simplify polygons drawn with the
+        lasso tool on this layer. 0 keeps every vertex. If None, the
+        ``rdp_epsilon`` experimental setting is used.
     metadata : dict
         Layer metadata.
     name : str
         Name of the layer.
     opacity : float
         Opacity of the layer visual, between 0.0 and 1.0.
-    preserve_lasso_vertices : bool
-        Whether polygon lasso completion keeps every sampled vertex instead of applying
-        Ramer-Douglas-Peucker simplification.
     projection_mode : str
         How data outside the viewed dimensions but inside the thick Dims slice will
         be projected onto the viewed dimenions.
@@ -470,10 +471,10 @@ class Shapes(Layer):
         face_contrast_limits=None,
         feature_defaults=None,
         features=None,
+        lasso_rdp_epsilon=None,
         metadata=None,
         name=None,
         opacity=0.7,
-        preserve_lasso_vertices=False,
         projection_mode='none',
         properties=None,
         property_choices=None,
@@ -532,12 +533,12 @@ class Shapes(Layer):
             feature_defaults=Event,
             drawing_started=Event,
             drawing_finished=Event,
-            preserve_lasso_vertices=Event,
+            lasso_rdp_epsilon=Event,
             _active_shape=Event,
         )
 
-        self._preserve_lasso_vertices = False
-        self.preserve_lasso_vertices = preserve_lasso_vertices
+        self._lasso_rdp_epsilon = None
+        self.lasso_rdp_epsilon = lasso_rdp_epsilon
 
         # Flag set to false to block thumbnail refresh
         self._allow_thumbnail_update = True
@@ -1699,7 +1700,7 @@ class Shapes(Layer):
                 'text': self.text.model_dump(),
                 'shape_type': self.shape_type,
                 'opacity': self.opacity,
-                'preserve_lasso_vertices': self.preserve_lasso_vertices,
+                'lasso_rdp_epsilon': self.lasso_rdp_epsilon,
                 'z_index': self.z_index,
                 'edge_width': self.edge_width,
                 'face_color': face_color,
@@ -1718,20 +1719,25 @@ class Shapes(Layer):
         return state
 
     @property
-    def preserve_lasso_vertices(self) -> bool:
-        """Whether polygon lasso completion preserves every sampled vertex.
+    def lasso_rdp_epsilon(self) -> float | None:
+        """float or None: RDP epsilon for polygons drawn with the lasso tool.
 
-        .. versionadded:: 0.9.0
+        0 keeps every vertex. If None, the ``rdp_epsilon`` experimental
+        setting is used.
         """
-        return self._preserve_lasso_vertices
+        return self._lasso_rdp_epsilon
 
-    @preserve_lasso_vertices.setter
-    def preserve_lasso_vertices(self, preserve: bool) -> None:
-        if not isinstance(preserve, bool):
-            raise TypeError('preserve_lasso_vertices must be a bool')
-        if self._preserve_lasso_vertices != preserve:
-            self._preserve_lasso_vertices = preserve
-            self.events.preserve_lasso_vertices()
+    @lasso_rdp_epsilon.setter
+    def lasso_rdp_epsilon(self, epsilon: float | None) -> None:
+        if epsilon is not None:
+            epsilon = float(epsilon)
+            if epsilon < 0:
+                raise ValueError(
+                    f'lasso_rdp_epsilon must be None or non-negative, got {epsilon}'
+                )
+        if epsilon != self._lasso_rdp_epsilon:
+            self._lasso_rdp_epsilon = epsilon
+            self.events.lasso_rdp_epsilon()
 
     @property
     def _view_indices(self):
@@ -3099,16 +3105,17 @@ class Shapes(Layer):
                         self._data_view.edit(index, vertices[:-1])
             if self._mode in {Mode.ADD_POLYGON, Mode.ADD_POLYGON_LASSO}:
                 vertices = self._data_view.shapes[index].data
-                if (
-                    self._mode == Mode.ADD_POLYGON_LASSO
-                    and not self.preserve_lasso_vertices
-                ):
+                if self._mode == Mode.ADD_POLYGON_LASSO:
+                    epsilon = self.lasso_rdp_epsilon
+                    if epsilon is None:
+                        epsilon = get_settings().experimental.rdp_epsilon
                     prev_vertices = len(vertices)
-                    vertices = rdp(
-                        vertices,
-                        epsilon=get_settings().experimental.rdp_epsilon,
-                    )
+                    vertices = rdp(vertices, epsilon=epsilon)
                     if len(vertices) <= 3 and prev_vertices > 3:
+                        if self.lasso_rdp_epsilon is None:
+                            remedy = 'napari > Settings > Experimental > RDP epsilon'
+                        else:
+                            remedy = "this layer's lasso_rdp_epsilon"
                         # https://github.com/napari/napari/issues/7903
                         show_warning(
                             'Polygons must have three or more vertices. '
@@ -3116,8 +3123,7 @@ class Shapes(Layer):
                             'RDP algorithm, which may cause polygons '
                             'smaller than RDP epsilon to disappear. If  '
                             'you face issues drawing small polygons, '
-                            'try reducing napari > Settings > '
-                            'Experimental > RDP epsilon. ',
+                            f'try reducing {remedy}. ',
                         )
                 # The last vertex follows the cursor and is not committed.
                 vertices = vertices[:-1]
