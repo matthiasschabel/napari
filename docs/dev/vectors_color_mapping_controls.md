@@ -1,7 +1,7 @@
 # Vectors Color-Mapping Controls
 
-**Status:** Deferred
-**Last updated:** 2026-08-25
+**Status:** Active
+**Last updated:** 2026-10-11
 **Scope:** Vectors color API and the legacy and dynamic Qt layer-control paths
 
 ## Context
@@ -25,10 +25,11 @@ rollout. The container uses legacy controls for the active layer by default and
 dynamic controls for multiple selection or when
 `experimental.dynamic_layer_controls` is enabled.
 
-The rebased #9335 branch only updates the legacy
-`widgets/_vectors/qt_edge_color.py`. Its controls therefore disappear when the
-dynamic path is selected. Force-pushing that branch would leave the feature
-half-wired.
+Until 2026-10-11 the rebased #9335 branch only updated the legacy
+`widgets/_vectors/qt_edge_color.py`, so its controls disappeared when the
+dynamic path was selected. The branch now carries a second commit mirroring
+the colormap chooser and limits slider into the dynamic copy of the widget,
+with one test per tree; both tests fail against the upstream widgets.
 
 The generic dynamic colormap control can operate on Vectors after a plain-name
 API migration. The generic contrast-limits control cannot be reused wholesale:
@@ -39,9 +40,12 @@ do not affect vector rendering.
 
 ## Current Decision
 
-Do not force-push or extend the current #9335 implementation. Leave the work
-deferred pending feedback from @brisvag or a concrete need that justifies
-supporting both Qt control paths now.
+#9335 is finished as the "temporary thing" @brisvag allowed: both control
+trees get the widgets, the `edge_` names are untouched, and the branch
+(`9b9ae089e` on upstream/main `d6a4ccb8c`) is ready to force-push once the
+user says so. The rename question was put to @brisvag on the PR on
+2026-10-11 and is unanswered; the API migration below waits on that answer and
+stays a separate PR.
 
 If the work resumes, preserve `ColorManager` as the single owner of color state
 and expose that state through a canonical plain Vectors API:
@@ -120,8 +124,8 @@ After the API migration, rework #9335 as a separate GUI PR:
 
 When feedback or urgency revives the work:
 
-1. Reply on #9335 with the post-merge #9318 constraints and ask for the exact
-   rename and deprecation scope.
+1. *(Done 2026-10-11.)* Asked @brisvag on #9335 for the rename and
+   deprecation scope.
 2. Prepare the public API migration as a standalone PR, including constructor,
    property, state-key, and event compatibility tests.
 3. Rework #9335 on top of that migration. Add one regression test for the
