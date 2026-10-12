@@ -377,9 +377,7 @@ def add_path_polygon_lasso(
         while event.type == 'mouse_move':
             polygon_creating(layer, event)
             yield
-        # A key binding or external controller may finish the lasso while this
-        # drag generator is suspended. The subsequent mouse release then has
-        # no in-flight shape to inspect or finish.
+        # Enter or Escape may have finished the shape during the drag.
         if not layer._is_creating:
             return
         index = layer._moving_value[0]
