@@ -1,7 +1,7 @@
 # Production and compositional-model branch boundary
 
 **Status:** Implemented (separation 2026-09-19; reinstatement 2026-10-11)
-**Last updated:** 2026-10-11
+**Last updated:** 2026-10-12
 **Scope:** napari `integration`, `compositional-core`, and `explore/compositional-data-model`; pirana consumers
 
 ## Context
@@ -139,7 +139,7 @@ home of the progressive renderer. Deleting the two branches and their worktrees
 
 ## Next Steps
 
-Move the pirana pins (Deferred Work). Keep `test_core_imports.py` green on every upstream sync;
+The pirana pins moved to `4c997ccab` on 2026-10-12 (tag `mcslab-gui-4c997cca` on the public fork; pirana-gui `docs/gui/dev/napari/production_pin_with_data_model.md`). Keep `test_core_imports.py` green on every upstream sync;
 a failure there is the signal that an adapter's private touch moved.
 
 ### Verification on 2026-09-19
