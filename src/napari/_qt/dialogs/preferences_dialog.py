@@ -200,9 +200,6 @@ class PreferencesDialog(QDialog):
 
         form = self._widget_builder(schema, values, name, self._settings)
 
-        if field_name == 'application':
-            self._wire_playback_rate_rows(form.widget)
-
         page_scrollarea = QScrollArea()
         page_scrollarea.setWidgetResizable(True)
         page_scrollarea.setWidget(form)
@@ -252,44 +249,44 @@ class PreferencesDialog(QDialog):
                             subname_, form.widget.widgets[name_]
                         )
                     )
+
+        # Inside the builder rather than in `_add_page`: the hook needs
+        # `settings_category`, which is local here, and every caller of the builder
+        # wants the conditional rows applied.
+        self._wire_conditional_rows(form.widget, settings_category)
+
         return form
 
     @staticmethod
-    def _wire_playback_rate_rows(page) -> None:
-        """Show only the speed row matching the selected playback rate mode.
+    def _wire_conditional_rows(page, settings_category) -> None:
+        """Hide rows whose ``preferences_visible_when`` condition is unmet.
 
-        ``playback_fps`` and ``playback_cycle_seconds`` are alternate
-        expressions of the same speed, so displaying just the active one makes
-        them read as a single row that follows the "Playback rate mode"
-        selector.
+        Lets two settings that are alternate expressions of one quantity read
+        as a single row following the selector that picks between them.
         """
-        from napari.settings._constants import PlaybackUnit
-
+        conditions = getattr(
+            getattr(settings_category, 'NapariConfig', None),
+            'preferences_visible_when',
+            (),
+        )
         widgets = page.widgets
-        rows = ('playback_unit', 'playback_fps', 'playback_cycle_seconds')
-        if any(name not in widgets for name in rows):
-            # a future preferences_exclude could remove any of these rows
-            return
-
         layout = page.layout()
 
-        def _update(*_) -> None:
-            cycle = (
-                PlaybackUnit(widgets['playback_unit'].state)
-                == PlaybackUnit.SECONDS_PER_CYCLE
-            )
-            for name, visible in (
-                ('playback_fps', not cycle),
-                ('playback_cycle_seconds', cycle),
-            ):
-                widget = widgets[name]
+        for field, controller, values in conditions:
+            # preferences_exclude may have dropped either row.
+            if field not in widgets or controller not in widgets:
+                continue
+
+            def _update(*_, field=field, controller=controller, values=values):
+                widget = widgets[field]
+                visible = widgets[controller].state in values
                 widget.setVisible(visible)
                 label = layout.labelForField(widget)
                 if label is not None:
                     label.setVisible(visible)
 
-        widgets['playback_unit'].on_changed.connect(_update)
-        _update()
+            widgets[controller].on_changed.connect(_update)
+            _update()
 
     def _get_page_dict(
         self,

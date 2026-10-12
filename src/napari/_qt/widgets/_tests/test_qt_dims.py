@@ -439,8 +439,7 @@ def test_play_popup_stays_open_on_enter(qtbot, qt_dims):
     assert button.popup.isVisible()
 
 
-def test_playback_cycle_time_unit(qtbot, qt_dims):
-    """The popup's unit selector converts between fps and seconds per cycle."""
+def test_playback_cycle_time_unit(qt_dims):
     qt_dims.dims.ndim = 3
     qt_dims.dims.set_range(0, (0, 19, 1))  # 20 steps on the sliding axis
     slider = qt_dims.slider_widgets[0]
@@ -461,17 +460,15 @@ def test_playback_cycle_time_unit(qtbot, qt_dims):
     button.fpsspin.editingFinished.emit()
     assert slider.fps == 5
 
-    # A change in axis length keeps the cycle time and re-derives fps.
+    # A longer axis holds the cycle time and re-derives fps.
     qt_dims.dims.set_range(0, (0, 39, 1))  # 40 steps
     assert button.fpsspin.value() == 4
     assert slider.fps == 10
 
-    # Direction applies on top of the converted rate.
     button.reverse_check.setChecked(True)
     assert slider.fps == -10
     assert button.fpsspin.value() == 4
 
-    # Switching back re-expresses the speed as (unsigned) fps.
     button.set_playback_unit(PlaybackUnit.FRAMES_PER_SECOND)
     assert not button.uses_cycle_time
     assert button.fpsspin.value() == 10
@@ -479,7 +476,6 @@ def test_playback_cycle_time_unit(qtbot, qt_dims):
 
 
 def test_playback_cycle_time_default_setting(qtbot):
-    """A cycle-time default derives per-axis fps and follows setting changes."""
     settings = get_settings()
     settings.application.playback_unit = PlaybackUnit.SECONDS_PER_CYCLE
 
@@ -495,12 +491,11 @@ def test_playback_cycle_time_default_setting(qtbot):
     assert button.fpsspin.value() == 2
     assert slider.fps == 10
 
-    # Changing the default duration flows into cycle-mode popups.
+    # Changing the default duration flows into open cycle mode popups.
     settings.application.playback_cycle_seconds = 4
     assert button.fpsspin.value() == 4
     assert slider.fps == 5
 
-    # Switching the default unit back re-expresses the speed as fps.
     settings.application.playback_unit = PlaybackUnit.FRAMES_PER_SECOND
     assert not button.uses_cycle_time
     assert button.fpsspin.value() == 5

@@ -45,8 +45,7 @@ SLIDER_MINIMUM_WIDTH = 150
 # How long the padlock stays tinted amber after a blocked navigation attempt.
 LOCK_FLASH_MS = 300
 
-# Playback-speed spinbox bound per unit; a day per cycle is effectively
-# unbounded.
+# Playback spinbox upper bounds; a day per cycle is effectively unbounded.
 PLAYBACK_FPS_MAX = 500
 PLAYBACK_CYCLE_SECONDS_MAX = 86400
 
@@ -133,9 +132,6 @@ class QtDimSliderWidget(QWidget):
         self.setLayout(layout)
         self.dims.events.axis_labels.connect(self._pull_label)
 
-        # Apply the default playback-speed unit and keep following it; in
-        # cycle-time mode each axis derives its own fps from the shared
-        # default duration.
         self._sync_playback_unit_from_settings()
         connect_no_arg(
             settings.application.events.playback_unit,
@@ -371,10 +367,10 @@ class QtDimSliderWidget(QWidget):
             self.lock_button.style().polish(self.lock_button)
 
     def _playback_nsteps(self) -> int:
-        """Step count of this axis, for fps <-> cycle-time conversion.
+        """Step count of this axis, for fps <-> cycle time conversion.
 
         Falls back to 1 when the axis has transiently disappeared during an
-        ndim reduction (same guard as ``_set_slice_from_label``).
+        ndim reduction, as ``_set_slice_from_label`` also guards against.
         """
         try:
             return max(self.dims.nsteps[self.axis], 1)
@@ -385,19 +381,15 @@ class QtDimSliderWidget(QWidget):
         """Convert between |fps| and the popup's displayed speed value.
 
         ``fps = nsteps / seconds`` and ``seconds = nsteps / fps``, so one
-        division serves both directions; 0 maps to 0 (stopped). In fps mode
-        the display *is* fps and the value passes through unchanged.
+        division serves both directions. In fps mode the display is already
+        fps and the value passes through unchanged; 0 maps to 0 (stopped).
         """
         if not self.play_button.uses_cycle_time:
             return value
         return self._playback_nsteps() / value if value else 0
 
     def _sync_playback_unit_from_settings(self) -> None:
-        """Point the popup at the globally configured speed unit.
-
-        Switching to cycle time also applies the default cycle duration;
-        switching to fps keeps the current rate and merely re-expresses it.
-        """
+        """Point the popup at the globally configured speed unit."""
         settings = get_settings().application
         if settings.playback_unit == PlaybackUnit.SECONDS_PER_CYCLE:
             self._apply_cycle_seconds(settings.playback_cycle_seconds)
@@ -420,10 +412,10 @@ class QtDimSliderWidget(QWidget):
         self._fps_listener()
 
     def _playback_unit_changed(self) -> None:
-        """Re-express the popup's speed value in the newly selected unit.
+        """Re-express the popup's speed in the newly selected unit.
 
-        The underlying fps is unchanged - only its display converts (10 fps
-        over 25 steps reads as 2.5 seconds per cycle).
+        Only the display converts; ``self._fps`` is untouched, so 10 fps over
+        25 steps reads as 2.5 seconds per cycle and plays at the same rate.
         """
         spin = self.play_button.fpsspin
         with qt_signals_blocked(spin):
@@ -505,8 +497,8 @@ class QtDimSliderWidget(QWidget):
             self.totslice_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
             self._update_slice_labels()
 
-            # In cycle-time mode the seconds value is the user's intent, so a
-            # new step count re-derives fps rather than the reverse.
+            # In cycle time mode the seconds value is what the user asked for,
+            # so a new step count re-derives fps rather than the reverse.
             if self.play_button.uses_cycle_time:
                 self._fps_listener()
 
@@ -744,8 +736,7 @@ class QtPlayButton(QPushButton):
         fpsspin.setMaximum(PLAYBACK_FPS_MAX)
         fpsspin.setMinimum(0)
 
-        # The row label doubles as a unit selector; the slider widget converts
-        # the displayed value, and fps stays the canonical speed everywhere.
+        # The row label doubles as the unit selector.
         unit_combo = QComboBox(self.popup)
         unit_combo.setObjectName('playbackUnitComboBox')
         unit_combo.addItem(

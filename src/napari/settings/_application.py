@@ -318,6 +318,20 @@ class ApplicationSettings(EventedModel):
             'ipy_interactive',
             'plugin_widget_positions',
         )
+        # Rows shown in preferences only while another field holds one of the
+        # listed values: (field, controlling field, values).
+        preferences_visible_when = (
+            (
+                'playback_fps',
+                'playback_unit',
+                (PlaybackUnit.FRAMES_PER_SECOND,),
+            ),
+            (
+                'playback_cycle_seconds',
+                'playback_unit',
+                (PlaybackUnit.SECONDS_PER_CYCLE,),
+            ),
+        )
 
 
 def brush_size_on_mouse_move_modifiers_callback(event: Event) -> None:
