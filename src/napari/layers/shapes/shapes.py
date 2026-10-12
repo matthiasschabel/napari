@@ -3099,40 +3099,16 @@ class Shapes(Layer):
                         self._data_view.edit(index, vertices[:-1])
             if self._mode in {Mode.ADD_POLYGON, Mode.ADD_POLYGON_LASSO}:
                 vertices = self._data_view.shapes[index].data
-                raw_committed_vertices = vertices[:-1]
                 if (
                     self._mode == Mode.ADD_POLYGON_LASSO
                     and not self.preserve_lasso_vertices
                 ):
+                    prev_vertices = len(vertices)
                     vertices = rdp(
                         vertices,
                         epsilon=get_settings().experimental.rdp_epsilon,
                     )
-                committed_vertices = vertices[:-1]
-                rdp_made_polygon_too_small = (
-                    self._mode == Mode.ADD_POLYGON_LASSO
-                    and not self.preserve_lasso_vertices
-                    and len(raw_committed_vertices) >= 3
-                    and len(committed_vertices) < 3
-                )
-                if len(committed_vertices) > 1:
-                    dtype = np.result_type(
-                        committed_vertices.dtype, np.float64
-                    )
-                    scale = max(
-                        1.0,
-                        float(np.max(np.abs(committed_vertices[[0, -1]]))),
-                    )
-                    atol = 8 * np.finfo(dtype).eps * scale
-                    if np.allclose(
-                        committed_vertices[0],
-                        committed_vertices[-1],
-                        rtol=0,
-                        atol=atol,
-                    ):
-                        committed_vertices = committed_vertices[:-1]
-                if len(committed_vertices) < 3:
-                    if rdp_made_polygon_too_small:
+                    if len(vertices) <= 3 and prev_vertices > 3:
                         # https://github.com/napari/napari/issues/7903
                         show_warning(
                             'Polygons must have three or more vertices. '
@@ -3143,6 +3119,15 @@ class Shapes(Layer):
                             'try reducing napari > Settings > '
                             'Experimental > RDP epsilon. ',
                         )
+                # The last vertex follows the cursor and is not committed.
+                vertices = vertices[:-1]
+                # Polygons are closed implicitly, so one drawn back onto its
+                # first vertex would otherwise store a zero-length edge.
+                if len(vertices) > 1 and np.allclose(
+                    vertices[0], vertices[-1]
+                ):
+                    vertices = vertices[:-1]
+                if len(vertices) < 3:
                     if index == staged_index:
                         self._data_view.remove_staged(index)
                         removed_staged = True
@@ -3156,13 +3141,13 @@ class Shapes(Layer):
                     if index == staged_index:
                         self._data_view.edit_staged(
                             index,
-                            committed_vertices,
+                            vertices,
                             new_type=shape_classes[ShapeType.POLYGON],
                         )
                     else:
                         self._data_view.edit(
                             index,
-                            committed_vertices,
+                            vertices,
                             new_type=shape_classes[ShapeType.POLYGON],
                         )
             if staged_index is not None and not removed_staged:
