@@ -1,7 +1,7 @@
 # Proposal: keep an in-progress shape coherent across slice changes
 
-**Status:** Active
-**Last updated:** 2026-08-25
+**Status:** Superseded by PRs napari#9636 (pause off-slice) and napari#9638 (anchor to the origin slice), and by `shapes_draw_pause_plan.md`, which is the current plan
+**Last updated:** 2026-10-11
 **Scope:** Draft proposal for napari#9207. Design rationale and evidence in
 `shapes_drawing_session_design.md`.
 
