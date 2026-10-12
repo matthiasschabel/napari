@@ -1016,14 +1016,21 @@ def test_lasso_return_to_first_vertex_is_stored_open(
 
 
 @pytest.mark.parametrize(
-    ('desired_shape', 'expected_added'),
+    ('desired_shape', 'expected_vertices'),
     [
-        ([[20, 20], [20, 50], [60, 50], [20, 20]], 1),
-        ([[20, 20], [20, 50], [20, 20]], 0),
+        (
+            [[20, 20], [20, 50], [60, 50], [20, 20]],
+            [[20, 20], [20, 50], [60, 50]],
+        ),
+        ([[20, 20], [20, 50], [20, 20]], None),
+        (
+            [[1e6, 1e6], [1e6 + 20, 1e6], [1e6, 1e6 + 5]],
+            [[1e6, 1e6], [1e6 + 20, 1e6], [1e6, 1e6 + 5]],
+        ),
     ],
 )
 def test_polygon_lasso_drops_repeated_first_vertex(
-    create_known_shapes_layer, desired_shape, expected_added
+    create_known_shapes_layer, desired_shape, expected_vertices
 ):
     layer, n_shapes, _known_non_shape = create_known_shapes_layer
     desired_shape = np.array(desired_shape)
@@ -1056,9 +1063,11 @@ def test_polygon_lasso_drops_repeated_first_vertex(
     )
     mouse_release_callbacks(layer, event)
 
-    assert len(layer.data) == n_shapes + expected_added
-    if expected_added:
-        assert np.array_equal(desired_shape[:-1], layer.data[-1])
+    if expected_vertices is None:
+        assert len(layer.data) == n_shapes
+    else:
+        assert len(layer.data) == n_shapes + 1
+        assert np.array_equal(layer.data[-1], expected_vertices)
 
 
 @pytest.mark.parametrize(
