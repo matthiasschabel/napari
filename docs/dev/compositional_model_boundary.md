@@ -85,21 +85,35 @@ The model returns to integration as an additive feature, `napari.experimental.da
 reversing the separation above. The September objection, no pirana consumer, still holds;
 the reason to reverse anyway is that integration is the branch that tracks upstream, so a
 feature carried there costs nothing in pirana and can move to pirana later if upstream
-declines it, whereas a feature parked in pirana first gains no upstream path. Conditions:
+declines it, whereas a feature parked in pirana first has no upstream path. The price is
+ongoing compatibility testing of the adapters' private napari touches on every upstream sync,
+in exchange for retiring the one-way branch synchronization. Conditions (plan-reviewed by
+Codex, gpt-6-astra at high effort, 2026-10-11; one blocking and three non-blocking findings
+folded in):
 
 - Scope is the compositional-core model: identity, fields, domains, sources, the coordinate
   layer and the napari adapters. The progressive renderer (atlas, bricks, ladder, working set)
   on the exploration branch is archived, not merged.
-- The coordinate layer is merged frozen. It is a less complete xarrayrf and will be replaced by
-  xarrayrf behind `_layer_coordinates` once xarrayrf's field representation settles; no xarrayrf
-  dependency is taken now.
-- An import-boundary test enforces that model modules import only NumPy and the standard
-  library and that only adapter modules import napari. Private napari state reached by an
-  adapter (MPR and the slicer) is listed in that test as a known upstream touch.
+- The coordinate layer is merged frozen. It is a less complete xarrayrf and will be replaced
+  by xarrayrf once xarrayrf's field representation settles; no xarrayrf dependency is taken now.
+  The spike's `_layer_coordinates` is the Image and `ImageBinding` projection seam only. A full
+  swap also touches `DataObject` validation (concrete `CoordinateEmbedding`, intrinsic-frame
+  identity), MPR's direct embedding reads, and the layer round-trip adapters, so it is a
+  migration, not a one-function change.
+- The existing boundary test, `_tests/test_core_imports.py`, is the enforcement: model modules
+  never import `napari.layers`, `napari.components`, `napari._qt` or `napari._vispy`, and
+  shapely stays an optional, function-local import for ROI geometry. Model modules do use
+  napari's existing non-viewer dependencies, pint (unit validation, basis conversion) and
+  lazy_loader; "NumPy only" was never true of this model and is not a condition.
+- The adapters' private napari touches are inventoried in that test's docstring and checked on
+  each upstream sync: MPR reads slicer state, imports the private Shapes polygon model and
+  writes Shapes' `_is_creating`.
 - `DataSource` is canonical; pirana's `NDImageSource` adapts to it (pirana-lab,
   `docs/dev/data_model_layering.md`).
-- No Python floor change. The model uses `dataclasses.replace`; the two `copy.replace`
-  assertions in `test_mri.py` are skipped below 3.13.
+- No Python floor change. Production code does not need `copy.replace`; `DataObject` has its
+  own `replace` and rejects `dataclasses.replace` by design. The merge guards the two unguarded
+  `copy.replace` assertions in `test_mri.py` for Python below 3.13, and the model suite runs on
+  the fork's 3.11 floor before the merge is called compatible.
 
 After the merge, the one-way synchronization and both experimental worktrees are retired, and
 the branches archived under `refs/archive/<date>/`.
