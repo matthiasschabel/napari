@@ -2676,6 +2676,34 @@ def test_mode_change_finishes_complex_shape(
     np.testing.assert_allclose(layer.data[-1], desired_shape)
 
 
+def test_disabling_editing_in_3d_mid_draw_finishes_polygon():
+    layer = Shapes(ndim=3)
+
+    desired_shape = [[0, 20, 30], [0, 10, 50], [0, 60, 40]]
+    layer.mode = 'add_polygon'
+    for coord in desired_shape:
+        for event_type, callback in [
+            ('mouse_move', mouse_move_callbacks),
+            ('mouse_press', mouse_press_callbacks),
+            ('mouse_release', mouse_release_callbacks),
+        ]:
+            callback(
+                layer,
+                read_only_mouse_event(
+                    type=event_type,
+                    position=coord,
+                    pos=np.array(coord[1:]),
+                    dims_displayed=[1, 2],
+                ),
+            )
+
+    layer._slice_dims(Dims(ndim=3, ndisplay=3))
+    layer.editable = False
+
+    assert layer.shape_type == ['polygon']
+    np.testing.assert_allclose(layer.data[0], desired_shape)
+
+
 @pytest.mark.parametrize('ndim', [2, 3])
 def test_ndisplay_change_finishes_polygon(ndim):
     layer = Shapes(ndim=ndim)

@@ -579,17 +579,6 @@ def test_proper_shape_position(
     )
 
 
-def test_edit_new_type_keeps_ndisplay():
-    data = np.array([[0, 0, 0], [0, 10, 0], [0, 10, 10]])
-    shape_list = ShapeList(ndisplay=3)
-    shape_list.add(Path(data, ndisplay=3))
-
-    shape_list.edit(0, data, new_type=Polygon)
-
-    assert isinstance(shape_list.shapes[0], Polygon)
-    assert shape_list.shapes[0].ndisplay == 3
-
-
 def test_staged_shape_reslices_without_aggregate_geometry():
     data = np.array([[0, 0, 0], [0, 10, 0], [0, 10, 10]])
     shape_list = ShapeList()
