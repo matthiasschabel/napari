@@ -163,6 +163,8 @@ Integration contains `upstream/main` (4b1f6dd77). Each open-PR and perf branch o
 
 [The archive manifest](branch_rationalization_archive.json) records exact branch tips, reasons, and restore refs before branch removal. Archive refs live in the primary clone, not the temporary worktrees. They are local-only; no experimental history is newly published to the public fork. Restore with `git branch <name> refs/archive/2026-09-19/<name>`.
 
+On 2026-10-13 the archive was pruned and backed up. 45 refs whose commits are held elsewhere were deleted: 27 at upstream `refs/pull/<N>/head`, 13 on an `origin` or `private` branch, 5 patch-equivalent in integration. Their names and SHAs are in `.git/archive-refs-deleted-2026-10-13.txt`. The 15 that remain hold commits found nowhere else, and each was pushed to the private repo (remote `private`) at the same `refs/archive/...` name. They are still not on the public fork. Each tip carries a `git notes` entry saying so, which `git log` shows. Before deleting one locally, confirm the copy with `git ls-remote private <ref>`. On another clone, fetch them with `git fetch private 'refs/archive/*:refs/archive/*' 'refs/notes/commits:refs/notes/commits'`. `refs/archive/2026-09-19/wip/roi-hole-overlays` had gone missing earlier with no record and was restored that day from the unreachable commit.
+
 Open PR branches and public dependency-retention tags are preserved. Merged branches are checked by landed code and regression tests; rejected prototypes are archived as unique history, never described as merged.
 
 ## Alternatives Considered

@@ -1,6 +1,6 @@
 {
   "status": "implemented",
-  "archive_location": "primary napari clone .git/refs/archive/2026-09-19 (local only; not /tmp)",
+  "archive_location": "primary napari clone .git/refs/archive/<date>/; refs still held there were also pushed to the private repo (remote `private`) on 2026-10-13",
   "entries": [
     {
       "branch": "backup-dims-lock-integration-20260824",
@@ -12,7 +12,7 @@
       "reason": "Historical navigation backup; archive unique history, current production owner-lock contract retained.",
       "archive_ref": "refs/archive/2026-09-19/backup-dims-lock-integration-20260824",
       "action": "archive local branch and remove its clean worktree",
-      "status": "removed; archive ref verified"
+      "status": "removed; archive ref verified; backed up to private at the same ref on 2026-10-13, so local deletion loses nothing"
     },
     {
       "branch": "backup-dims-lock-topic-20260824",
@@ -24,7 +24,7 @@
       "reason": "Historical navigation backup; archive unique history.",
       "archive_ref": "refs/archive/2026-09-19/backup-dims-lock-topic-20260824",
       "action": "archive local branch and remove its clean worktree",
-      "status": "removed; archive ref verified"
+      "status": "removed; archive ref verified; backed up to private at the same ref on 2026-10-13, so local deletion loses nothing"
     },
     {
       "branch": "bench/layer-partition-scaling",
@@ -36,7 +36,7 @@
       "reason": "Patch reverse-applies to production; identical benchmark patch retained by perf/layer-scaling-benchmarks.",
       "archive_ref": "refs/archive/2026-09-19/bench/layer-partition-scaling",
       "action": "archive local branch and remove its clean worktree",
-      "status": "removed; archive ref verified"
+      "status": "removed; archive ref verified; archive ref deleted 2026-10-13, commits held at integration (patch-equivalent)"
     },
     {
       "branch": "feature/dims-axis-lock-v1",
@@ -48,7 +48,7 @@
       "reason": "Superseded axis-lock prototype; retain open PR #9442 on feature/dims-axis-lock.",
       "archive_ref": "refs/archive/2026-09-19/feature/dims-axis-lock-v1",
       "action": "archive local branch and remove its clean worktree",
-      "status": "removed; archive ref verified"
+      "status": "removed; archive ref verified; backed up to private at the same ref on 2026-10-13, so local deletion loses nothing"
     },
     {
       "branch": "fix/dims-lock-active-axis-clean",
@@ -60,7 +60,7 @@
       "reason": "Exact duplicate of retained fix/dims-lock-active-axis (1356c21d6).",
       "archive_ref": "refs/archive/2026-09-19/fix/dims-lock-active-axis-clean",
       "action": "archive local branch and remove its clean worktree",
-      "status": "removed; archive ref verified"
+      "status": "removed; archive ref verified; archive ref deleted 2026-10-13, commits held at branch origin/integration"
     },
     {
       "branch": "fix/playback-debounce-noop-frame",
@@ -77,7 +77,7 @@
       "reason": "PR #9440 merged; branch patch reverse-applies to production.",
       "archive_ref": "refs/archive/2026-09-19/fix/playback-debounce-noop-frame",
       "action": "archive local branch and remove its clean worktree",
-      "status": "removed; archive ref verified"
+      "status": "removed; archive ref verified; archive ref deleted 2026-10-13, commits held at upstream refs/pull/9440/head"
     },
     {
       "branch": "fix/playback-range-refresh",
@@ -89,7 +89,7 @@
       "reason": "PR #9440 merged; upstream inlines range refresh in QtDims._update_range, including bounds/current clamping and no-op frame handling; old helper prototype superseded.",
       "archive_ref": "refs/archive/2026-09-19/fix/playback-range-refresh",
       "action": "archive local branch and remove its clean worktree",
-      "status": "removed; archive ref verified"
+      "status": "removed; archive ref verified; archive ref deleted 2026-10-13, commits held at inside upstream refs/pull/9440/head"
     },
     {
       "branch": "fix/vectors-emit-mode-on-color-setter",
@@ -106,7 +106,7 @@
       "reason": "PR #9396 merged; upstream connects ColorManager event directly rather than lambda, removes setter re-emission, and retains the regression test.",
       "archive_ref": "refs/archive/2026-09-19/fix/vectors-emit-mode-on-color-setter",
       "action": "archive local branch and remove its clean worktree",
-      "status": "removed; archive ref verified"
+      "status": "removed; archive ref verified; archive ref deleted 2026-10-13, commits held at branch origin/integration"
     },
     {
       "branch": "integration-rebuild",
@@ -118,7 +118,7 @@
       "reason": "Abandoned alternative production assembly. Preserve full history in local archive; integration remains sole production assembly.",
       "archive_ref": "refs/archive/2026-09-19/integration-rebuild",
       "action": "archive local branch and remove its clean worktree",
-      "status": "removed; archive ref verified"
+      "status": "removed; archive ref verified; backed up to private at the same ref on 2026-10-13, so local deletion loses nothing"
     },
     {
       "branch": "maintenance/separate-compositional-core",
@@ -128,7 +128,7 @@
       "reason": "Completed production separation; exact commit retained by public mcslab-gui-5b9fc7b1 tag.",
       "archive_ref": "refs/archive/2026-09-19/maintenance/separate-compositional-core",
       "action": "archive local branch and remove its clean worktree",
-      "status": "removed; archive ref verified"
+      "status": "removed; archive ref verified; archive ref deleted 2026-10-13, commits held at branch origin/integration"
     },
     {
       "branch": "perf/shapes-transparent-streams",
@@ -140,7 +140,7 @@
       "reason": "Deferred benchmark-only proposal; dev note and probes already retained in integration, no runtime optimization shipped.",
       "archive_ref": "refs/archive/2026-09-19/perf/shapes-transparent-streams",
       "action": "archive local branch and remove its clean worktree",
-      "status": "removed; archive ref verified"
+      "status": "removed; archive ref verified; archive ref deleted 2026-10-13, commits held at integration (patch-equivalent)"
     },
     {
       "branch": "wip/roi-hole-overlays",
@@ -152,7 +152,7 @@
       "reason": "Inactive ROI overlay experiment. Preserve full prototype in archive; compositional exploration remains active experimental branch.",
       "archive_ref": "refs/archive/2026-09-19/wip/roi-hole-overlays",
       "action": "archive local branch and remove its clean worktree",
-      "status": "removed; archive ref verified"
+      "status": "removed; archive ref verified; backed up to private at the same ref on 2026-10-13, so local deletion loses nothing; the ref had been lost before 2026-10-13 with no record and was restored from the unreachable object that day"
     },
     {
       "branch": "perf/skip-identity-unit-conversion",
@@ -164,7 +164,7 @@
       "reason": "Merged upstream as #9411 on 2026-09-23; in integration via the upstream merge.",
       "archive_ref": "refs/archive/2026-09-24/perf/skip-identity-unit-conversion",
       "action": "archive local branch, remove worktree, delete origin copy if any",
-      "status": "removed; archive ref verified"
+      "status": "removed; archive ref verified; archive ref deleted 2026-10-13, commits held at upstream refs/pull/9411/head"
     },
     {
       "branch": "fix/qtviewer-prepopulated-model",
@@ -176,7 +176,7 @@
       "reason": "Merged upstream as #9533 on 2026-09-23; in integration via the upstream merge. origin tip also archived.",
       "archive_ref": "refs/archive/2026-09-24/fix/qtviewer-prepopulated-model",
       "action": "archive local branch, remove worktree, delete origin copy if any",
-      "status": "removed; archive ref verified"
+      "status": "removed; archive ref verified; archive ref deleted 2026-10-13, commits held at inside upstream refs/pull/9533/head"
     },
     {
       "branch": "fix/shapes-polygon-right-click-remove-vertex",
@@ -188,7 +188,7 @@
       "reason": "PR #9421 closed; integration removed the fork right-click rollback in f8aa854ed.",
       "archive_ref": "refs/archive/2026-09-24/fix/shapes-polygon-right-click-remove-vertex",
       "action": "archive local branch, remove worktree, delete origin copy if any",
-      "status": "removed; archive ref verified"
+      "status": "removed; archive ref verified; archive ref deleted 2026-10-13, commits held at upstream refs/pull/9421/head"
     },
     {
       "branch": "maintenance/napari-rationalization",
@@ -200,7 +200,7 @@
       "reason": "Merged into integration (e692b25cf).",
       "archive_ref": "refs/archive/2026-09-24/maintenance/napari-rationalization",
       "action": "archive local branch, remove worktree, delete origin copy if any",
-      "status": "removed; archive ref verified"
+      "status": "removed; archive ref verified; archive ref deleted 2026-10-13, commits held at branch origin/integration"
     },
     {
       "branch": "feature/shapes-drawing-order",
@@ -212,7 +212,7 @@
       "reason": "Superseded by open #9275; its remaining commits are present in integration.",
       "archive_ref": "refs/archive/2026-09-24/feature/shapes-drawing-order",
       "action": "archive local branch, remove worktree, delete origin copy if any",
-      "status": "removed; archive ref verified"
+      "status": "removed; archive ref verified; backed up to private at the same ref on 2026-10-13, so local deletion loses nothing"
     }
   ]
 }
