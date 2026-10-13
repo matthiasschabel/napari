@@ -1,7 +1,7 @@
 # Shapes: pausing an in-progress draw across slice and axis changes
 
 **Status:** Active
-**Last updated:** 2026-10-06
+**Last updated:** 2026-10-13
 **Scope:** napari#9207. Two upstream PRs: A (visible pause) and B (anchored editing, stacked on A).
 Supersedes the PR plan in `shapes_drawing_session_design.md` ("The off-slice cue" and
 "Next steps"); that note remains the evidence base.
@@ -152,11 +152,13 @@ Pirana follow-ups:
    at 1x/3x/8x, clean corners. Not yet pushed or opened.
 2. A opened as draft napari#9636 on 2026-10-05 (squashed to `57719a2bf`; pre-squash tip
    `de39311d1`). Then B on top.
-3. Separate small PR, draft napari#9637 (2026-10-05): branch `fix/shapes-mode-change-finish`
+3. Separate small PR, napari#9637 (opened 2026-10-05, approved 2026-10-06): branch `fix/shapes-mode-change-finish`
    (`80cb678e7`, worktree `~/GitHub/napari-feat/shapes-mode-change-finish`). Switching mode
    mid-draw kept the cursor vertex on polygons and polylines. Finishing first exposed
    `ShapeList.edit(new_type=...)` dropping `ndisplay` (ValueError on the 3D toggle mid-draw), fixed
    in the same PR. Conflicts trivially with A in the mode setter; whichever lands second rebases.
+   The `ndisplay` test now goes through the layer (draw, 3D slice, `editable = False` as the
+   layer controls do) instead of calling `ShapeList.edit` (`d8f0574ed`, 2026-10-13, at review).
 4. Note for B: with a half-integer data point (layer scale 2), world 0 and 1 round to the same
    plane, so A does not pause there; B's exact-origin clamp covers it.
 

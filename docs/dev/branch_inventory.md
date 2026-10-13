@@ -1,7 +1,7 @@
 # Production fork branch inventory
 
 **Status:** Active
-**Last updated:** 2026-10-12
+**Last updated:** 2026-10-13
 **Scope:** napari integration, upstream topic branches, compositional experiments, and pirana consumers
 
 ## Context
@@ -38,20 +38,20 @@ context menu.
 | [#9419](https://github.com/napari/napari/pull/9419) | `perf/shapes-staged-creation` | Retain pending upstream review; preserve production adaptations. |
 | [#9561](https://github.com/napari/napari/pull/9561) | `fix/nan-color-fast-math` | NaN `nan_color` stopgap; superseded by vispy#2796 once napari's minimum vispy includes it. |
 | [#9562](https://github.com/napari/napari/pull/9562) | `fix/shapes-finish-drawing-emit-order` | Clear `_is_creating` before `_finish_drawing` emits. |
-
-### Lasso branches, PR not yet opened: retain
-
-Cut from upstream main and cherry-picked onto integration on 2026-10-12. They replace `feature/shapes-preserve-lasso-vertices` and the lasso finishing changes in 4a5a842d2.
-
-| Branch | Purpose |
-|---|---|
-| `feature/shapes-lasso-vertex-retention` | Per-layer `lasso_rdp_epsilon` (0 keeps every vertex) for #9412, replacing the boolean `preserve_lasso_vertices`. Waits on a maintainer reply in #9412. |
-| `fix/shapes-lasso-release-after-finish` | Enter or Escape during a lasso drag raised `TypeError` on mouse release. |
-| `fix/shapes-lasso-repeated-closing-vertex` | A polygon drawn back onto its first vertex stored it twice. |
 | [#9563](https://github.com/napari/napari/pull/9563) | `feature/shapes-added-event-indices` | ADDED indices counted from the end, like Points; stacked on #9562. Differs from integration, see below. |
 | [#9564](https://github.com/napari/napari/pull/9564) | `fix/shapes-data-setter-scalar-shape-type` | Broadcast a scalar `shape_type` in the data setter. |
 | [#9565](https://github.com/napari/napari/pull/9565) | `fix/tiled-image-keeps-state-on-retile` | Tiled image keeps settings, GL state and filters across a retile. Integration carries this exact change. |
 | [#9696](https://github.com/napari/napari/pull/9696) | `fix/cursor-viewbox-empty-tile` | `Cursor.viewbox` may be None over an empty grid viewbox again (#9431 regression found by the pirana-viewer GUI suite). Cut from upstream `fd9091739`; integration carries the commit by cherry-pick (`70a14824a`) because merging the branch would sync upstream past `d6a4ccb8`. |
+| [#9699](https://github.com/napari/napari/pull/9699) | `fix/shapes-lasso-release-after-finish` | Enter or Escape during a lasso drag raised `TypeError` on mouse release. Approved. Integration carries it by cherry-pick (2026-10-12). |
+| [#9700](https://github.com/napari/napari/pull/9700) | `fix/shapes-lasso-repeated-closing-vertex` | A polygon drawn back onto its first vertex stored it twice. Integration carries it by cherry-pick (2026-10-12). |
+
+### Lasso branch, PR not yet opened: retain
+
+Cut from upstream main and cherry-picked onto integration on 2026-10-12. Together with #9699 and #9700 above, it replaces `feature/shapes-preserve-lasso-vertices` and the lasso finishing changes in 4a5a842d2.
+
+| Branch | Purpose |
+|---|---|
+| `feature/shapes-lasso-vertex-retention` | Per-layer `lasso_rdp_epsilon` (0 keeps every vertex) for #9412, replacing the boolean `preserve_lasso_vertices`. Waits on a maintainer reply in #9412. |
 
 ### Upstream PRs that differ from integration
 
