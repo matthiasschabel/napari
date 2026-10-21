@@ -12,7 +12,7 @@ _MODE_CURSOR_SIZE = 32
 _MODE_CURSOR_HOTSPOT = (2, 2)
 
 
-def crosshair_pixmap():
+def crosshair_pixmap() -> QPixmap:
     """Create a cross cursor with white/black hollow square pixmap in the middle.
     For use as points cursor."""
 
@@ -83,7 +83,7 @@ def crosshair_pixmap():
     return pixmap
 
 
-def square_pixmap(size: int):
+def square_pixmap(size: int) -> QPixmap:
     """Create a white/black hollow square pixmap. For use as labels cursor."""
     size = max(int(size), 1)
     pixmap = QPixmap(QSize(size, size))
@@ -97,15 +97,15 @@ def square_pixmap(size: int):
     return pixmap
 
 
-def create_square_cursor(size: int):
+def create_square_cursor(size: int) -> QCursor:
     return QCursor(square_pixmap(size))
 
 
-def create_crosshair_cursor():
+def create_crosshair_cursor() -> QCursor:
     return QCursor(crosshair_pixmap())
 
 
-def create_blank_cursor():
+def create_blank_cursor() -> QCursor:
     return QCursor(Qt.CursorShape.BlankCursor)
 
 

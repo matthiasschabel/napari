@@ -730,9 +730,7 @@ class QtPlayButton(QPushButton):
         fpsspin.setObjectName('fpsSpinBox')
         fpsspin.setAlignment(Qt.AlignmentFlag.AlignCenter)
         fpsspin.setValue(self.fps)
-        if hasattr(fpsspin, 'setStepType'):
-            # this was introduced in Qt 5.12.  Totally optional, just nice.
-            fpsspin.setStepType(QDoubleSpinBox.AdaptiveDecimalStepType)
+        fpsspin.setStepType(QDoubleSpinBox.StepType.AdaptiveDecimalStepType)
         fpsspin.setMaximum(PLAYBACK_FPS_MAX)
         fpsspin.setMinimum(0)
 

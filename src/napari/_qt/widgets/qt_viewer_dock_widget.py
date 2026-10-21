@@ -1,4 +1,5 @@
 import warnings
+from collections.abc import Sequence
 from functools import reduce
 from itertools import count
 from operator import ior
@@ -94,7 +95,7 @@ class QtViewerDockWidget(QDockWidget):
     area : str
         Side of the main window to which the new dock widget will be added.
         Must be in {'left', 'right', 'top', 'bottom'}
-    allowed_areas : list[str], optional
+    allowed_areas : Sequence[str], optional
         Areas, relative to main window, that the widget is allowed dock.
         Each item in list must be in {'left', 'right', 'top', 'bottom'}
         By default, all areas are allowed.
@@ -118,7 +119,7 @@ class QtViewerDockWidget(QDockWidget):
         *,
         name: str = '',
         area: str = 'right',
-        allowed_areas: list[str] | None = None,
+        allowed_areas: Sequence[str] | None = None,
         shortcut=_sentinel,
         object_name: str = '',
         add_vertical_stretch=True,
@@ -211,9 +212,13 @@ class QtViewerDockWidget(QDockWidget):
         if value not in dock_area_to_str:
             return
         settings = get_settings()
-        settings.application.plugin_widget_positions[self.name] = (
-            dock_area_to_str[value]
-        )
+        positions = settings.application.plugin_widget_positions
+        area = dock_area_to_str[value]
+        # Only persist positions the user chose; the initial placement must
+        # not be stored, or later changes to the default would be ignored.
+        if self.name not in positions and area == self.area:
+            return
+        positions[self.name] = area
         settings._maybe_save()
 
     @property
@@ -275,10 +280,8 @@ class QtViewerDockWidget(QDockWidget):
 
     def event(self, event):
         if event.type() == QEvent.Type.LayoutRequest:
-            # QDockWidgetLayout folds the dock's current minimumSize into its
-            # own minimum, and its SetMinAndMaxSize constraint writes that back
-            # on every activation, so the minimum can only ever grow. Reset the
-            # explicit floor first so it is recomputed from the content.
+            # Reset the explicit floor first so it is recomputed from
+            # the content to avoid issue where minimum can only ever grow.
             self.setMinimumSize(_MIN_DOCK_SIZE, _MIN_DOCK_SIZE)
         return super().event(event)
 

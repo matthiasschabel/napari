@@ -379,3 +379,8 @@ def test_napari_cmap_to_vispy_drops_inf_colors():
     np.testing.assert_allclose(
         vispy_cmap.map(np.array([0.0, 1.0])), [[0, 0, 0, 1], [1, 1, 1, 1]]
     )
+
+
+def test_ensure_colormap_none_is_gray():
+    """None means "no colormap specified", so the default gray is used."""
+    assert ensure_colormap(None).name == 'gray'

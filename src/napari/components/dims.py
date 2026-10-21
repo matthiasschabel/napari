@@ -6,6 +6,7 @@ from typing import (
     ClassVar,
     Literal,
     NamedTuple,
+    Self,
 )
 
 import numpy as np
@@ -186,7 +187,7 @@ class Dims(EventedModel):
         return ranges
 
     @model_validator(mode='after')
-    def _check_dims(self):
+    def _check_dims(self) -> Self:
         """Check the consistency of dimensionality for all attributes.
 
         Parameters
@@ -293,7 +294,7 @@ class Dims(EventedModel):
         return self._nsteps_from_range(self.range)
 
     @nsteps.setter
-    def nsteps(self, value):
+    def nsteps(self, value) -> None:
         self.range = tuple(
             RangeTuple(
                 rng.start, rng.stop, (rng.stop - rng.start) / (nsteps - 1)
@@ -302,14 +303,14 @@ class Dims(EventedModel):
         )
 
     @property
-    def current_step(self):
+    def current_step(self) -> tuple[int, ...]:
         return tuple(
             round((point - rng.start) / (rng.step or 1))
             for point, rng in zip(self.point, self.range, strict=False)
         )
 
     @current_step.setter
-    def current_step(self, value):
+    def current_step(self, value) -> None:
         self.point = tuple(
             rng.start + point * (rng.step or 1)
             for point, rng in zip(value, self.range, strict=False)
@@ -323,7 +324,7 @@ class Dims(EventedModel):
         )
 
     @margin_left_step.setter
-    def margin_left_step(self, value):
+    def margin_left_step(self, value) -> None:
         self.margin_left = tuple(
             mrg * (rng.step or 1)
             for mrg, rng in zip(value, self.range, strict=False)
@@ -337,7 +338,7 @@ class Dims(EventedModel):
         )
 
     @margin_right_step.setter
-    def margin_right_step(self, value):
+    def margin_right_step(self, value) -> None:
         self.margin_right = tuple(
             mrg * (rng.step or 1)
             for mrg, rng in zip(value, self.range, strict=False)
@@ -353,7 +354,7 @@ class Dims(EventedModel):
         )
 
     @thickness.setter
-    def thickness(self, value):
+    def thickness(self, value) -> None:
         self.margin_left = self.margin_right = tuple(val / 2 for val in value)
 
     @property
@@ -366,7 +367,7 @@ class Dims(EventedModel):
         )
 
     @thickness_step.setter
-    def thickness_step(self, value):
+    def thickness_step(self, value) -> None:
         self.margin_left_step = self.margin_right_step = tuple(
             val // 2 for val in value
         )
@@ -389,7 +390,7 @@ class Dims(EventedModel):
         self,
         axis: int | Sequence[int],
         _range: Sequence[int | float] | Sequence[Sequence[int | float]],
-    ):
+    ) -> None:
         """Sets ranges (min, max, step) for the given dimensions.
 
         Parameters
@@ -414,7 +415,7 @@ class Dims(EventedModel):
         value: float | Sequence[float],
         *,
         force: bool = False,
-    ):
+    ) -> None:
         """Sets point to slice dimension in world coordinates.
 
         Parameters
@@ -456,7 +457,7 @@ class Dims(EventedModel):
         value: int | Sequence[int],
         *,
         force: bool = False,
-    ):
+    ) -> None:
         axis, value = self._sanitize_input(
             axis, value, value_is_sequence=False
         )
@@ -471,7 +472,7 @@ class Dims(EventedModel):
         self,
         axis: int | Sequence[int],
         label: str | Sequence[str],
-    ):
+    ) -> None:
         """Sets new axis labels for the given axes.
 
         Parameters
@@ -489,7 +490,7 @@ class Dims(EventedModel):
             full_axis_labels[ax] = val
         self.axis_labels = tuple(full_axis_labels)
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset dims values to initial states."""
         # Don't reset axis labels
         # TODO: could be optimized with self.update, but need to fix
@@ -501,7 +502,7 @@ class Dims(EventedModel):
         self.margin_right = (0,) * self.ndim
         self.rollable = (True,) * self.ndim
 
-    def transpose(self, *, force: bool = False):
+    def transpose(self, *, force: bool = False) -> None:
         """Transpose displayed dimensions.
 
         This swaps the order of the last two displayed dimensions.
@@ -519,7 +520,7 @@ class Dims(EventedModel):
         order[-2], order[-1] = order[-1], order[-2]
         self.order = order  # pyrefly: ignore [bad-assignment]
 
-    def _increment_dims_right(self, axis: int | None = None):
+    def _increment_dims_right(self, axis: int | None = None) -> None:
         """Increment dimensions to the right along given axis, or last used axis if None
 
         Parameters
@@ -531,7 +532,7 @@ class Dims(EventedModel):
             axis = self.last_used
         self.set_current_step(axis, self.current_step[axis] + 1)
 
-    def _increment_dims_left(self, axis: int | None = None):
+    def _increment_dims_left(self, axis: int | None = None) -> None:
         """Increment dimensions to the left along given axis, or last used axis if None
 
         Parameters
@@ -543,7 +544,7 @@ class Dims(EventedModel):
             axis = self.last_used
         self.set_current_step(axis, self.current_step[axis] - 1)
 
-    def _focus_up(self):
+    def _focus_up(self) -> None:
         """Shift focused dimension slider to be the next slider above."""
         # Skip locked axes: focusing a slider you cannot move is pointless.
         sliders = [
@@ -562,7 +563,7 @@ class Dims(EventedModel):
             index = 0
         self.last_used = sliders[index]
 
-    def _focus_down(self):
+    def _focus_down(self) -> None:
         """Shift focused dimension slider to be the next slider bellow."""
         # Skip locked axes: focusing a slider you cannot move is pointless.
         sliders = [
@@ -581,7 +582,7 @@ class Dims(EventedModel):
             index = -1
         self.last_used = sliders[index]
 
-    def roll(self, *, force: bool = False):
+    def roll(self, *, force: bool = False) -> None:
         """Roll order of dimensions for display.
 
         Pass ``force=True`` to bypass an active navigation lock.
@@ -602,7 +603,7 @@ class Dims(EventedModel):
         order[valid] = np.roll(order[valid], shift=1)
         self.order = order  # pyrefly: ignore [bad-assignment]
 
-    def _go_to_center_step(self):
+    def _go_to_center_step(self) -> None:
         self.current_step = [int((ns - 1) / 2) for ns in self.nsteps]
 
     @property

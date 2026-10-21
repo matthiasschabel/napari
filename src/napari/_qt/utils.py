@@ -214,7 +214,7 @@ def drag_with_pixmap(list_widget: QListWidget) -> QDrag:
     >>> class QListWidget:
     ...     def startDrag(self, supportedActions):
     ...         drag = drag_with_pixmap(self)
-    ...         drag.exec_(supportedActions, Qt.MoveAction)
+    ...         drag.exec(supportedActions, Qt.DropAction.MoveAction)
 
     """
     drag = QDrag(list_widget)
@@ -452,7 +452,7 @@ _QT_CLASS_FONTS = (
 )
 
 
-def use_tabular_numerals(obj: QWidget | QGuiApplication) -> bool:
+def use_tabular_numerals(obj: QWidget | QGuiApplication) -> None:
     """Render digits in `obj` using tabular numerals, if the font supports it.
 
     This enables the OpenType `tnum` ("tabular numerals") feature, which uses
@@ -466,20 +466,9 @@ def use_tabular_numerals(obj: QWidget | QGuiApplication) -> bool:
 
     Important: if the actual font does not support tabular numerals, this
     will have no effect, because Qt will silently ignore it.
-
-    Returns
-    -------
-    bool
-        True if the feature was requested. False on Qt < 6.7, where
-        ``QFont.setFeature`` does not exist.
     """
-    # QFont.setFeature and QFont.Tag are Qt 6.7+; napari still supports PyQt5.
-    tag = getattr(QFont, 'Tag', None)
-    if tag is None or not hasattr(QFont, 'setFeature'):
-        return False
-
     font = QFont(obj.font())
-    font.setFeature(tag('tnum'), 1)
+    font.setFeature(QFont.Tag('tnum'), 1)
     if isinstance(obj, QGuiApplication):
         # QApplication.setFont also clears the per-class fonts, e.g. the
         # platform's smaller tooltip and header fonts on macOS.
@@ -490,11 +479,10 @@ def use_tabular_numerals(obj: QWidget | QGuiApplication) -> bool:
             for class_name in _QT_CLASS_FONTS:
                 class_font = QApplication.font(class_name)
                 if class_font != font:
-                    class_font.setFeature(tag('tnum'), 1)
+                    class_font.setFeature(QFont.Tag('tnum'), 1)
                     QApplication.setFont(class_font, class_name)
     else:
         obj.setFont(font)
-    return True
 
 
 def use_fixed_pitch_font(obj: QWidget | QGuiApplication) -> None:
@@ -541,7 +529,7 @@ def get_color(
 
     dlg = QColorDialog(color, parent=parent)
     new_color: str | np.ndarray | QColor | None = None
-    if dlg.exec_():
+    if dlg.exec():
         new_color = dlg.currentColor()
         if mode == ColorMode.HEX:
             new_color = new_color.name()

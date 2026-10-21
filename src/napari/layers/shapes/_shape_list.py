@@ -820,16 +820,16 @@ class ShapeList:
         return [s.z_index for s in self.shapes]
 
     @property
-    def slice_key(self):
-        """list: slice key for slicing n-dimensional shapes."""
+    def slice_key(self) -> np.ndarray[tuple[int], np.dtype[np.floating]]:
+        """(P,) array: slice key for slicing n-dimensional shapes."""
         return self._slice_key
 
     @slice_key.setter
     @_batch_dec
-    def slice_key(self, slice_key):
-        slice_key = list(slice_key)
+    def slice_key(self, slice_key: npt.ArrayLike) -> None:
+        slice_key = np.asarray(slice_key, dtype=float)
         if not np.array_equal(self._slice_key, slice_key):
-            self._slice_key = slice_key  # pyrefly: ignore [bad-assignment]
+            self._slice_key = slice_key
             self._clear_cache()
             self._update_displayed()
 
@@ -941,7 +941,7 @@ class ShapeList:
         edge_color=None,
         shape_index=None,
         z_refresh=True,
-    ):
+    ) -> None:
         """Adds a single Shape object (single add mode) or multiple Shapes (multiple shape mode, which is much faster)
 
         If shape is a single instance of subclass Shape then single add mode will be used, otherwise multiple add mode
@@ -996,7 +996,7 @@ class ShapeList:
         edge_color=None,
         shape_index=None,
         z_refresh=True,
-    ):
+    ) -> None:
         """Adds a single Shape object
 
         Parameters
@@ -1112,7 +1112,9 @@ class ShapeList:
             self._update_z_order()
         self._clear_cache()
 
-    def _extend_meshes(self, face_colors, edge_colors, arrays: MeshArrayDict):
+    def _extend_meshes(
+        self, face_colors, edge_colors, arrays: MeshArrayDict
+    ) -> None:
         """Assemble mesh properties from filled arrays.
 
         Parameters
@@ -1234,7 +1236,7 @@ class ShapeList:
         self._clear_cache()
 
     @_batch_dec
-    def remove_all(self):
+    def remove_all(self) -> None:
         """Removes all shapes"""
         self._staged_index = None
         self.shapes = []
@@ -1386,7 +1388,9 @@ class ShapeList:
         self.remove_multiple([index], renumber=renumber)
 
     @_batch_dec
-    def remove_multiple(self, indices: list[int], renumber: bool = True):
+    def remove_multiple(
+        self, indices: list[int], renumber: bool = True
+    ) -> None:
         """Removes multiple shapes located at indices.
 
         Parameters
@@ -1474,7 +1478,7 @@ class ShapeList:
         self._clear_cache()
 
     @_batch_dec
-    def _update_mesh_vertices(self, index, edge=False, face=False):
+    def _update_mesh_vertices(self, index, edge=False, face=False) -> None:
         """Updates the mesh vertex data and vertex data for a single shape
         located at index.
 
@@ -1558,7 +1562,7 @@ class ShapeList:
         self._clear_cache()
 
     @_batch_dec
-    def _update_z_order(self):
+    def _update_z_order(self) -> None:
         """Updates the z order of the triangles given the z_index list"""
         self._z_order = np.argsort(self._z_index, kind='stable')  # pyrefly: ignore [bad-assignment]
         if len(self._z_order) == 0:
@@ -1576,7 +1580,7 @@ class ShapeList:
 
     def edit(
         self, index, data, face_color=None, edge_color=None, new_type=None
-    ):
+    ) -> None:
         """Updates the data of a single shape located at index. If
         `new_type` is not None then converts the shape type to the new type
 
@@ -1623,7 +1627,7 @@ class ShapeList:
         self.update(index)
         self._update_z_order()
 
-    def update_edge_width(self, index, edge_width):
+    def update_edge_width(self, index, edge_width) -> None:
         """Updates the edge width of a single shape located at index.
 
         Parameters
@@ -1722,7 +1726,7 @@ class ShapeList:
         if update:
             self._update_displayed()
 
-    def update_dims_order(self, dims_order):
+    def update_dims_order(self, dims_order) -> None:
         """Updates dimensions order for all shapes.
 
         Parameters
@@ -1740,7 +1744,7 @@ class ShapeList:
                     self.update(index)
         self._update_z_order()
 
-    def update_z_index(self, index, z_index):
+    def update_z_index(self, index, z_index) -> None:
         """Updates the z order of a single shape located at index.
 
         Parameters
@@ -1756,7 +1760,7 @@ class ShapeList:
         self._z_index[index] = z_index
         self._update_z_order()
 
-    def shift(self, index, shift):
+    def shift(self, index, shift) -> None:
         """Performs a 2D shift on a single shape located at index
 
         Parameters
@@ -1770,7 +1774,7 @@ class ShapeList:
         self.shapes[index].shift(shift)
         self._update_mesh_vertices(index, edge=True, face=True)
 
-    def scale(self, index, scale, center=None):
+    def scale(self, index, scale, center=None) -> None:
         """Performs a scaling on a single shape located at index
 
         Parameters
@@ -1787,7 +1791,7 @@ class ShapeList:
         self.update(index)
         self._update_z_order()
 
-    def rotate(self, index, angle, center=None):
+    def rotate(self, index, angle, center=None) -> None:
         """Performs a rotation on a single shape located at index
 
         Parameters
@@ -1803,7 +1807,7 @@ class ShapeList:
         self.shapes[index].rotate(angle, center=center)
         self._update_mesh_vertices(index, edge=True, face=True)
 
-    def flip(self, index, axis, center=None):
+    def flip(self, index, axis, center=None) -> None:
         """Performs an vertical flip on a single shape located at index
 
         Parameters
@@ -1820,7 +1824,7 @@ class ShapeList:
         self.shapes[index].flip(axis, center=center)
         self._update_mesh_vertices(index, edge=True, face=True)
 
-    def transform(self, index, transform):
+    def transform(self, index, transform) -> None:
         """Performs a linear transform on a single shape located at index
 
         Parameters
@@ -2152,7 +2156,7 @@ class ShapeList:
         triangle_indices: np.ndarray,
         ray_position: np.ndarray,
         ray_direction: np.ndarray,
-    ):
+    ) -> np.ndarray[tuple[int, Literal[3]], np.dtype[np.floating]]:
         """Find the intersection of a ray with specified triangles.
 
         Parameters
@@ -2182,7 +2186,9 @@ class ShapeList:
         )
         return intersection_points
 
-    def to_masks(self, mask_shape=None, zoom_factor=1, offset=(0, 0)):
+    def to_masks(
+        self, mask_shape=None, zoom_factor=1, offset=(0, 0)
+    ) -> npt.NDArray[np.bool_]:
         """Returns N binary masks, one for each shape, embedded in an array of
         shape `mask_shape`.
 
@@ -2207,16 +2213,17 @@ class ShapeList:
         if mask_shape is None:
             mask_shape = self.displayed_vertices.max(axis=0).astype('int')
 
-        masks = np.array(
-            [
-                s.to_mask(mask_shape, zoom_factor=zoom_factor, offset=offset)
-                for s in self.shapes
-            ]
-        )
-
+        if not self.shapes:
+            # an empty list has always returned an empty 1D array
+            return np.array([])
+        masks = np.zeros((len(self.shapes), *mask_shape), dtype=bool)
+        for mask, shape in zip(masks, self.shapes, strict=True):
+            mask[shape._mask_index(mask_shape, zoom_factor, offset)] = True
         return masks
 
-    def to_labels(self, labels_shape=None, zoom_factor=1, offset=(0, 0)):
+    def to_labels(
+        self, labels_shape=None, zoom_factor=1, offset=(0, 0)
+    ) -> npt.NDArray[np.int_]:
         """Returns a integer labels image, where each shape is embedded in an
         array of shape labels_shape with the value of the index + 1
         corresponding to it, and 0 for background. For overlapping shapes
@@ -2246,16 +2253,16 @@ class ShapeList:
         labels = np.zeros(labels_shape, dtype=int)
 
         for ind in self._z_order[::-1]:
-            mask = self.shapes[ind].to_mask(
-                labels_shape, zoom_factor=zoom_factor, offset=offset
+            index = self.shapes[ind]._mask_index(
+                labels_shape, zoom_factor, offset
             )
-            labels[mask] = ind + 1
+            labels[index] = ind + 1
 
         return labels
 
     def to_colors(
         self, colors_shape=None, zoom_factor=1, offset=(0, 0), max_shapes=None
-    ):
+    ) -> npt.NDArray[np.float64]:
         """Rasterize shapes to an RGBA image array.
 
         Each shape is embedded in an array of shape `colors_shape` with the
@@ -2302,18 +2309,18 @@ class ShapeList:
             z_order_in_view = z_order_in_view[-max_shapes:]
 
         for ind in z_order_in_view:
-            mask = self.shapes[ind].to_mask(
-                colors_shape, zoom_factor=zoom_factor, offset=offset
+            index = self.shapes[ind]._mask_index(
+                colors_shape, zoom_factor, offset
             )
             if type(self.shapes[ind]) in [Path, Line]:
                 col = self._edge_color[ind]
             else:
                 col = self._face_color[ind]
-            colors[mask, :] = col
+            colors[index] = col
 
         return colors
 
-    def _clear_cache(self):
+    def _clear_cache(self) -> None:
         self.__dict__.pop('_bounding_boxes', None)
         self.__dict__.pop('_visible_shapes', None)
         self.__dict__.pop('_visible_shapes_indices', None)

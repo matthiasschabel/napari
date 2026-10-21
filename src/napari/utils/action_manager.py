@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, cast
 
 from napari.utils.events import EmitterGroup
 from napari.utils.interactions import Shortcut
-from napari.utils.translations import trans
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -91,10 +90,10 @@ class ActionManager:
         self._tooltip_include_action_name = False
         self.events = EmitterGroup(source=self, shortcut_changed=None)
 
-    def _debug(self, val):
+    def _debug(self, val) -> None:
         self._tooltip_include_action_name = val
 
-    def _validate_action_name(self, name):
+    def _validate_action_name(self, name) -> None:
         if len(name.split(':')) != 2:
             raise ValueError(
                 f'Action names need to be in the form `package:name`, got {name!r}'
@@ -107,7 +106,7 @@ class ActionManager:
         description: str,
         keymapprovider: type[KeymapProvider] | None,
         repeatable: bool = False,
-    ):
+    ) -> None:
         """
         Register an action for future usage
 
@@ -160,13 +159,10 @@ class ActionManager:
 
         if repeatable:
             warnings.warn(
-                trans._(
-                    'The `repeatable` flag is deprecated and ignored: key '
-                    'auto-repeat is now delivered to '
-                    'every binding by default, and hold-semantics bindings '
-                    'suppress it automatically. Stop passing `repeatable`.',
-                    deferred=True,
-                ),
+                'The `repeatable` flag is deprecated and ignored: key '
+                'auto-repeat is now delivered to every binding by default, '
+                'and hold-semantics bindings suppress it automatically. '
+                'Stop passing `repeatable`.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -177,7 +173,7 @@ class ActionManager:
         if keymapprovider:
             self._update_shortcut_bindings(name)
 
-    def _update_shortcut_bindings(self, name: str):
+    def _update_shortcut_bindings(self, name: str) -> None:
         """
         Update the key mappable for given action name
         to trigger the action within the given context and
@@ -238,7 +234,7 @@ class ActionManager:
                 '`bind_button` cannot be used with generator functions'
             )
 
-        def _trigger():
+        def _trigger() -> None:
             self.trigger(name)
 
         button.clicked.connect(_trigger)
@@ -323,7 +319,7 @@ class ActionManager:
         self._emit_shortcut_change(name)
         return shortcuts
 
-    def _emit_shortcut_change(self, name: str, shortcut=''):
+    def _emit_shortcut_change(self, name: str, shortcut='') -> None:
         tt = self._build_tooltip(name) if name in self._actions else ''
         self.events.shortcut_changed(name=name, shortcut=shortcut, tooltip=tt)
 
@@ -388,7 +384,7 @@ class ActionManager:
             if action and provider == action.keymapprovider
         }
 
-    def _get_active_shortcuts(self, active_keymap):
+    def _get_active_shortcuts(self, active_keymap) -> dict[str, str]:
         """
         Get active shortcuts for the given active keymap.
 

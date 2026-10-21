@@ -3,7 +3,7 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from napari.components import Dims
+from napari.components.dims import Dims
 from napari.layers import Shapes
 from napari.layers.base._base_constants import ActionType
 from napari.layers.shapes import (
@@ -826,6 +826,13 @@ def test_polyline_mouse(create_known_shapes_layer):
     assert layer.shape_type[-1] == 'path'
     assert layer._data_view.staged_index == n_shapes
 
+    event = read_only_mouse_event(
+        type='mouse_release',
+        position=desired_shape[0],
+        pos=desired_shape[0],
+    )
+    mouse_release_callbacks(layer, event)
+
     for coord in desired_shape[1:]:
         event = read_only_mouse_event(
             type='mouse_move',
@@ -1166,6 +1173,47 @@ def test_lasso_rdp_epsilon_rejects_negative():
         Shapes(lasso_rdp_epsilon=-1)
 
 
+def test_polygon_lasso_release_after_keyboard_finish(
+    create_known_shapes_layer,
+):
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+    desired_shape = np.array([[20, 30], [10, 50], [60, 40]])
+
+    get_settings().experimental.rdp_epsilon = 0
+    layer.mode = 'add_polygon_lasso'
+
+    event = read_only_mouse_event(
+        type='mouse_press',
+        is_dragging=True,
+        position=desired_shape[0],
+        pos=desired_shape[0],
+    )
+    mouse_press_callbacks(layer, event)
+
+    for coord in desired_shape[1:]:
+        event = read_only_mouse_event(
+            type='mouse_move',
+            is_dragging=True,
+            position=coord,
+            pos=coord,
+        )
+        mouse_move_callbacks(layer, event)
+
+    key_bindings.finish_drawing_shape(layer)
+
+    event = read_only_mouse_event(
+        type='mouse_release',
+        is_dragging=True,
+        position=desired_shape[-1],
+        pos=desired_shape[-1],
+    )
+    mouse_release_callbacks(layer, event)
+
+    assert len(layer.data) == n_shapes + 1
+    assert np.array_equal(desired_shape, layer.data[-1])
+    assert not layer._is_creating
+
+
 def test_polygon_lasso_mouse(create_known_shapes_layer):
     """Draw polygon with mouse. Events in sequence are mouse press, release, move, press, release"""
     layer, n_shapes, _known_non_shape = create_known_shapes_layer
@@ -1181,6 +1229,13 @@ def test_polygon_lasso_mouse(create_known_shapes_layer):
     )
     mouse_press_callbacks(layer, event)
     assert layer.shape_type[-1] != 'polygon'
+
+    event = read_only_mouse_event(
+        type='mouse_release',
+        position=desired_shape[0],
+        pos=desired_shape[0],
+    )
+    mouse_release_callbacks(layer, event)
 
     for coord in desired_shape[1:]:
         event = read_only_mouse_event(
@@ -1508,6 +1563,67 @@ def test_discarded_polygon_reports_no_index(create_known_shapes_layer):
 
     assert len(layer.data) == n_shapes, 'the degenerate shape should be gone'
     assert added == [()], added
+
+
+@pytest.mark.parametrize('shape_type', ['polyline', 'polygon'])
+def test_mode_change_finishes_complex_shape(
+    shape_type, create_known_shapes_layer
+):
+    layer, n_shapes, _known_non_shape = create_known_shapes_layer
+
+    desired_shape = [[20, 30], [10, 50], [60, 40]]
+    layer.mode = f'add_{shape_type}'
+    for coord in desired_shape:
+        for event_type, callback in [
+            ('mouse_move', mouse_move_callbacks),
+            ('mouse_press', mouse_press_callbacks),
+            ('mouse_release', mouse_release_callbacks),
+        ]:
+            callback(
+                layer,
+                read_only_mouse_event(
+                    type=event_type, position=coord, pos=np.array(coord)
+                ),
+            )
+    mouse_move_callbacks(
+        layer,
+        read_only_mouse_event(
+            type='mouse_move', position=[70, 70], pos=np.array([70, 70])
+        ),
+    )
+
+    layer.mode = 'select'
+
+    assert len(layer.data) == n_shapes + 1
+    np.testing.assert_allclose(layer.data[-1], desired_shape)
+
+
+def test_disabling_editing_in_3d_mid_draw_finishes_polygon():
+    layer = Shapes(ndim=3)
+
+    desired_shape = [[0, 20, 30], [0, 10, 50], [0, 60, 40]]
+    layer.mode = 'add_polygon'
+    for coord in desired_shape:
+        for event_type, callback in [
+            ('mouse_move', mouse_move_callbacks),
+            ('mouse_press', mouse_press_callbacks),
+            ('mouse_release', mouse_release_callbacks),
+        ]:
+            callback(
+                layer,
+                read_only_mouse_event(
+                    type=event_type,
+                    position=coord,
+                    pos=np.array(coord[1:]),
+                    dims_displayed=[1, 2],
+                ),
+            )
+
+    layer._slice_dims(Dims(ndim=3, ndisplay=3))
+    layer.editable = False
+
+    assert layer.shape_type == ['polygon']
+    np.testing.assert_allclose(layer.data[0], desired_shape)
 
 
 @pytest.mark.parametrize(
@@ -2641,67 +2757,6 @@ def test_automatic_vertices_off_slice_land_on_original_slice(mode):
 
     assert len(layer.data[0]) == 3
     np.testing.assert_allclose(layer.data[0][-1], (0, 40, 40))
-
-
-@pytest.mark.parametrize('shape_type', ['polyline', 'polygon'])
-def test_mode_change_finishes_complex_shape(
-    shape_type, create_known_shapes_layer
-):
-    layer, n_shapes, _known_non_shape = create_known_shapes_layer
-
-    desired_shape = [[20, 30], [10, 50], [60, 40]]
-    layer.mode = f'add_{shape_type}'
-    for coord in desired_shape:
-        for event_type, callback in [
-            ('mouse_move', mouse_move_callbacks),
-            ('mouse_press', mouse_press_callbacks),
-            ('mouse_release', mouse_release_callbacks),
-        ]:
-            callback(
-                layer,
-                read_only_mouse_event(
-                    type=event_type, position=coord, pos=np.array(coord)
-                ),
-            )
-    mouse_move_callbacks(
-        layer,
-        read_only_mouse_event(
-            type='mouse_move', position=[70, 70], pos=np.array([70, 70])
-        ),
-    )
-
-    layer.mode = 'select'
-
-    assert len(layer.data) == n_shapes + 1
-    np.testing.assert_allclose(layer.data[-1], desired_shape)
-
-
-def test_disabling_editing_in_3d_mid_draw_finishes_polygon():
-    layer = Shapes(ndim=3)
-
-    desired_shape = [[0, 20, 30], [0, 10, 50], [0, 60, 40]]
-    layer.mode = 'add_polygon'
-    for coord in desired_shape:
-        for event_type, callback in [
-            ('mouse_move', mouse_move_callbacks),
-            ('mouse_press', mouse_press_callbacks),
-            ('mouse_release', mouse_release_callbacks),
-        ]:
-            callback(
-                layer,
-                read_only_mouse_event(
-                    type=event_type,
-                    position=coord,
-                    pos=np.array(coord[1:]),
-                    dims_displayed=[1, 2],
-                ),
-            )
-
-    layer._slice_dims(Dims(ndim=3, ndisplay=3))
-    layer.editable = False
-
-    assert layer.shape_type == ['polygon']
-    np.testing.assert_allclose(layer.data[0], desired_shape)
 
 
 @pytest.mark.parametrize('ndim', [2, 3])
