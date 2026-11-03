@@ -1,9 +1,13 @@
 # GL capability probe for exceptional values
 
-**Status:** Active
-**Last updated:** 2026-08-22
+**Status:** Implemented
+**Last updated:** 2026-11-03
 **Scope:** napari GPU rendering of NaN, infinities, and masked values; Stage 4a of
 the staged plan in `cmap/docs/dev/mcslab/napari_exceptional_rendering_plan.md`
+
+The probe is done and kept as a dev tool for new driver results. The Option A / Option B
+question below is settled: neither ships as framed. The current plan is
+`exceptional_colors_roadmap.md` in this directory.
 
 ## Context
 
@@ -151,7 +155,7 @@ generate them, and checks that all thirteen values reach the right color. It
 passes; the stock chain, run in the same process for contrast, misroutes
 neg_inf, pos_inf, and both NaNs. This is now implemented in the fork.
 
-### What this means for the design
+### What this means for the design (2026-08; superseded)
 
 The Apple result argues for Option B's data half and against Option A's
 mechanism, but not for the reason the plan anticipated. The blocker is not that
@@ -178,7 +182,7 @@ and nothing more.
 - Probe integer and uint16 textures. napari casts float64 to float32 before
   upload, but the label and integer paths have their own conversions.
 
-## Next steps
+## Next steps (2026-08; superseded by `exceptional_colors_roadmap.md`)
 
 The NaN finding does not wait on the coverage table. It is a live bug on the
 platform we can already measure, with a one-line fix, and it is independent of
