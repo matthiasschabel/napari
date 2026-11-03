@@ -5,8 +5,8 @@ from collections import defaultdict
 from unittest.mock import Mock
 
 import pytest
-from qtpy.QtGui import QFont, QFontMetricsF
-from qtpy.QtWidgets import QAction, QLabel, QShortcut
+from qtpy.QtGui import QAction, QFont, QFontMetricsF, QShortcut
+from qtpy.QtWidgets import QLabel
 
 from napari._qt.qt_event_loop import (
     _ipython_has_eventloop,

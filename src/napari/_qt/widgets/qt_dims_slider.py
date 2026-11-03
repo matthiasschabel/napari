@@ -300,7 +300,7 @@ class QtDimSliderWidget(QWidget):
         )
 
         play_button.fpsspin.editingFinished.connect(self._fps_listener)
-        play_button.reverse_check.stateChanged.connect(self._fps_listener)
+        play_button.reverse_check.toggled.connect(self._fps_listener)
         play_button.unit_combo.currentIndexChanged.connect(
             self._playback_unit_changed
         )

@@ -320,7 +320,7 @@ def test_preferences_dialog_close(qtbot, pref):
 
 def test_preferences_dialog_escape(qtbot, pref):
     with qtbot.waitSignal(pref.finished):
-        qtbot.keyPress(pref, Qt.Key_Escape)
+        qtbot.keyPress(pref, Qt.Key.Key_Escape)
     assert get_settings().appearance.theme == 'dark'
 
 
@@ -361,7 +361,9 @@ def test_preferences_dialog_restore(qtbot, pref, monkeypatch):
     ) == KeyBinding.from_str('U')
 
     monkeypatch.setattr(
-        QMessageBox, 'question', lambda *a: QMessageBox.RestoreDefaults
+        QMessageBox,
+        'question',
+        lambda *a: QMessageBox.StandardButton.RestoreDefaults,
     )
     pref._restore_default_dialog()
 

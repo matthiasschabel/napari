@@ -1,18 +1,18 @@
 # Production fork branch inventory
 
 **Status:** Active
-**Last updated:** 2026-10-13
+**Last updated:** 2026-11-03
 **Scope:** napari integration, upstream topic branches, compositional experiments, and pirana consumers
 
 ## Context
 
-Integration includes upstream main through d6a4ccb8 (#9662), which brings in the landed #9407, #9441 and #9394. A merged PR is not a reason to revert its old merge: inspect the remaining source delta. Retire a compatibility path when its fix is present in every supported consumer profile.
+Integration includes upstream main through 8ad9a217b (v0.10.0 plus three commits), merged 2026-11-03; see the sync check below. A merged PR is not a reason to revert its old merge: inspect the remaining source delta. Retire a compatibility path when its fix is present in every supported consumer profile.
 
 ## Current Decision
 
 Production assembly: `integration`. Experimental synchronization flows one way through `compositional-core` to `explore/compositional-data-model`. See [the model boundary](compositional_model_boundary.md).
 
-Pirana viewer's stock floor is 0.9.2 (raised from 0.9.1 on 2026-10-19, and from 0.9.0rc1 on 2026-09-26). #9257 and #9364 were already in 0.9.1, so its fork-only autorepeat probe and private Vectors mode subscription are retired; #9396 is in 0.9.2, so its explicit direct-mode resynchronization is retired too. The appended-vector-color workaround addresses a separate unresolved API gap. The independent pirana-colormap package may still support napari 0.8.
+Pirana viewer's stock floor is 0.10.0 (raised from 0.9.2 on 2026-11-03, which retired its key auto-repeat probe for #9361; from 0.9.1 on 2026-10-19; from 0.9.0rc1 on 2026-09-26). #9257 and #9364 were already in 0.9.1, so its fork-only autorepeat probe and private Vectors mode subscription are retired; #9396 is in 0.9.2, so its explicit direct-mode resynchronization is retired too. The appended-vector-color workaround addresses a separate unresolved API gap. The independent pirana-colormap package may still support napari 0.8.
 
 The integration keeps its layer-list held-Delete suppression for now: it prevents repeated Delete
 from walking the selection and removing unrelated layers. Pirana-specific right-click vertex
@@ -29,25 +29,18 @@ context menu.
 | [#9645](https://github.com/napari/napari/pull/9645) | `fix/tnum-keep-class-fonts` | Integration carries the PR head (`ddee96e16`) since 2026-10-06: app-level `tnum` through `QGuiApplication.setFont` plus Qt's per-class fonts. |
 | [#9326](https://github.com/napari/napari/pull/9326) | `feature/playback-cycle-time` | Retain pending upstream review; preserve production adaptations. |
 | [#9275](https://github.com/napari/napari/pull/9275) | `feature/shapes-drawing-state` | Retain pending upstream review; preserve production adaptations. |
-| [#9361](https://github.com/napari/napari/pull/9361) | `feature/uniform-key-autorepeat` | Integration carries the PR head (`73d1181fb`, repeat by default; `repeatable` deprecated and ignored) since 2026-09-26, after reverting the earlier opt-in-preserving generation (`b0850becc`). Owner rule: where a local fix and an open PR overlap, the PR takes precedence. |
 | [#9335](https://github.com/napari/napari/pull/9335) | `feature/vectors-feature-color-mapping-controls` | Retain pending upstream review; preserve production adaptations. |
-| [#9532](https://github.com/napari/napari/pull/9532) | `fix/dock-widget-minimum-ratchet` | Retain pending upstream review; preserve production adaptations. |
 | [#9462](https://github.com/napari/napari/pull/9462) | `fix/dock-widget-size-policy` | Integration carries the PR head verbatim again since 2026-10-04 (it was lost when #9484's revert merged in via e33f37a6a). The dock file differs from the PR head only by #9532's minimum-shrink carry. |
 | [#9328](https://github.com/napari/napari/pull/9328) | `fix/settings-reset-announces-every-field` | Retain pending upstream review; preserve production adaptations. |
-| [#9418](https://github.com/napari/napari/pull/9418) | `perf/shapes-hide-empty-subvisuals` | Retain pending upstream review; preserve production adaptations. |
 | [#9419](https://github.com/napari/napari/pull/9419) | `perf/shapes-staged-creation` | Retain pending upstream review; preserve production adaptations. |
 | [#9561](https://github.com/napari/napari/pull/9561) | `fix/nan-color-fast-math` | NaN `nan_color` stopgap; superseded by vispy#2796 once napari's minimum vispy includes it. |
 | [#9562](https://github.com/napari/napari/pull/9562) | `fix/shapes-finish-drawing-emit-order` | Clear `_is_creating` before `_finish_drawing` emits. |
 | [#9563](https://github.com/napari/napari/pull/9563) | `feature/shapes-added-event-indices` | ADDED indices counted from the end, like Points; stacked on #9562. Differs from integration, see below. |
-| [#9564](https://github.com/napari/napari/pull/9564) | `fix/shapes-data-setter-scalar-shape-type` | Broadcast a scalar `shape_type` in the data setter. |
-| [#9565](https://github.com/napari/napari/pull/9565) | `fix/tiled-image-keeps-state-on-retile` | Tiled image keeps settings, GL state and filters across a retile. Integration carries this exact change. |
-| [#9696](https://github.com/napari/napari/pull/9696) | `fix/cursor-viewbox-empty-tile` | `Cursor.viewbox` may be None over an empty grid viewbox again (#9431 regression found by the pirana-viewer GUI suite). Cut from upstream `fd9091739`; integration carries the commit by cherry-pick (`70a14824a`) because merging the branch would sync upstream past `d6a4ccb8`. |
-| [#9699](https://github.com/napari/napari/pull/9699) | `fix/shapes-lasso-release-after-finish` | Enter or Escape during a lasso drag raised `TypeError` on mouse release. Approved. Integration carries it by cherry-pick (2026-10-12). |
 | [#9700](https://github.com/napari/napari/pull/9700) | `fix/shapes-lasso-repeated-closing-vertex` | A polygon drawn back onto its first vertex stored it twice. Integration carries it by cherry-pick (2026-10-12). |
 
 ### Lasso branch, PR not yet opened: retain
 
-Cut from upstream main and cherry-picked onto integration on 2026-10-12. Together with #9699 and #9700 above, it replaces `feature/shapes-preserve-lasso-vertices` and the lasso finishing changes in 4a5a842d2.
+Cut from upstream main and cherry-picked onto integration on 2026-10-12. Together with #9699 (merged) and #9700 above, it replaces `feature/shapes-preserve-lasso-vertices` and the lasso finishing changes in 4a5a842d2.
 
 | Branch | Purpose |
 |---|---|
@@ -58,8 +51,16 @@ Cut from upstream main and cherry-picked onto integration on 2026-10-12. Togethe
 When these merge, reconcile the integration delta rather than simply dropping it:
 
 - #9563 reports ADDED `data_indices` counted from the end (`(-2, -1)`), matching `Points.add`. Integration reports positive indices (`(2, 3)`). Pirana is indifferent: its ROI controller ignores ADDED indices and normalizes negative indices for other actions (checked 2026-09-26), so take whichever form upstream accepts.
-- #9565: integration adopted the PR's implementation verbatim on 2026-09-27 (d47c2b4e1), replacing its own read-back (8fa195756). Nothing to reconcile when it merges.
 - #9442/#9568 add `Dims.axis_locked`, which is separate from integration's owner-lock API that pirana consumes.
+
+### Sync check (2026-11-03)
+
+Merged upstream/main 8ad9a217b (v0.10.0 plus three commits) into integration with `--no-ff`. Landed upstream and removed from the retain table: #9361, #9532, #9418, #9564, #9565, #9696, #9699 (all in v0.10.0); #9637 and #9441 had also landed. Their branches are now deletion candidates under the branch-cleanup rule; none was deleted.
+
+- Conflicts: `test_app.py` imports (upstream moved `QAction`/`QShortcut` to `QtGui` with the PyQt5 drop; integration's `QFontMetricsF` kept); `qt_dims_slider.py` (upstream's `reverse_check.toggled` plus integration's #9326 unit/reset connections); `qt_viewer_dock_widget.py` (integration's #9462 `_wants_vertical_space` kept over upstream's inline exemption set, so dock behavior pirana sees is unchanged; whether to keep carrying #9462 is open).
+- Tests (`_qt components layers settings _vispy utils`, PyQt6): the failure set equals pre-merge 8642a31af's except the known-flaky `test_tour_escape_closes_regardless_of_focus`, which passes alone. Pre-existing on both: `test_value_3d` (four cases), `test_plugin_single_widget_menu`, and order-dependent plugin-widget failures.
+- Local environment, not the merge: torch and PartSegCore both load libomp and abort labels rendering (`OMP: Error #15`), and numba's default threading layer then deadlocks in `test_direct_label_colormap_simple[numba]`. Run with `KMP_DUPLICATE_LIB_OK=TRUE NUMBA_THREADING_LAYER=workqueue QT_API=pyqt6`.
+- Pins are unchanged at `4c997ccab`; the merge commit is local until a retention tag is published.
 
 ### Sync check (2026-10-11)
 
