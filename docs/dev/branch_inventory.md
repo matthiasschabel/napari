@@ -1,12 +1,12 @@
 # Production fork branch inventory
 
 **Status:** Active
-**Last updated:** 2026-11-03
+**Last updated:** 2026-11-04
 **Scope:** napari integration, upstream topic branches, compositional experiments, and pirana consumers
 
 ## Context
 
-Integration includes upstream main through 8ad9a217b (v0.10.0 plus three commits), merged 2026-11-03; see the sync check below. A merged PR is not a reason to revert its old merge: inspect the remaining source delta. Retire a compatibility path when its fix is present in every supported consumer profile.
+Integration includes upstream main through 1861293dc (v0.10.0 plus five commits), merged 2026-11-04; see the sync check below. A merged PR is not a reason to revert its old merge: inspect the remaining source delta. Retire a compatibility path when its fix is present in every supported consumer profile.
 
 ## Current Decision
 
@@ -37,6 +37,8 @@ context menu.
 | [#9562](https://github.com/napari/napari/pull/9562) | `fix/shapes-finish-drawing-emit-order` | Clear `_is_creating` before `_finish_drawing` emits. |
 | [#9563](https://github.com/napari/napari/pull/9563) | `feature/shapes-added-event-indices` | ADDED indices counted from the end, like Points; stacked on #9562. Differs from integration, see below. |
 | [#9700](https://github.com/napari/napari/pull/9700) | `fix/shapes-lasso-repeated-closing-vertex` | A polygon drawn back onto its first vertex stored it twice. Integration carries it by cherry-pick (2026-10-12). |
+| [#9636](https://github.com/napari/napari/pull/9636) | `feature/shapes-draw-pause` | Pause an in-progress Shapes draw on a slice or axes change. Not carried in integration; see `shapes_draw_pause_plan.md`. |
+| [#9638](https://github.com/napari/napari/pull/9638) | `feature/shapes-draw-anchor` | Let a Shapes draw continue on other slices, anchored to its origin slice; stacked on #9636 (at `ea2b27e0b`). Not carried in integration. |
 
 ### Lasso branch, PR not yet opened: retain
 
@@ -52,6 +54,15 @@ When these merge, reconcile the integration delta rather than simply dropping it
 
 - #9563 reports ADDED `data_indices` counted from the end (`(-2, -1)`), matching `Points.add`. Integration reports positive indices (`(2, 3)`). Pirana is indifferent: its ROI controller ignores ADDED indices and normalizes negative indices for other actions (checked 2026-09-26), so take whichever form upstream accepts.
 - #9442/#9568 add `Dims.axis_locked`, which is separate from integration's owner-lock API that pirana consumes.
+
+### Sync check (2026-11-04)
+
+Merged upstream/main 1861293dc into integration with `--no-ff` (`eea63e9`): #9591 (boolean values in `EnumSchemaWidget`) and #9844 (constraint bumps). No carried PR landed; all PRs in the retain table are still open upstream, with their branches on the fork. #9636 and #9638, open but missing from the table, were added to it.
+
+- Conflict: `test_preferences_dialog.py`, where upstream's `test_bool_enum_widget` and integration's `test_playback_rate_mode_rows` (#9326) were added at the same place; both kept.
+- Tests not run: the merge was made on a host whose glibc 2.23 cannot install current numpy/Qt wheels. Pushed untested at the user's request; run `test_preferences_dialog.py` (and the `_qt settings` suites) on another machine after pulling, before publishing a retention tag.
+- Branches of the PRs that landed in the 2026-11-03 sync are already gone from the fork; no deletion candidates remain.
+- Pins are unchanged at `4c997ccab`; no retention tag yet.
 
 ### Sync check (2026-11-03)
 
