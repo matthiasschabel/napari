@@ -60,9 +60,9 @@ When these merge, reconcile the integration delta rather than simply dropping it
 Merged upstream/main 1861293dc into integration with `--no-ff` (`eea63e9`): #9591 (boolean values in `EnumSchemaWidget`) and #9844 (constraint bumps). No carried PR landed; all PRs in the retain table are still open upstream, with their branches on the fork. #9636 and #9638, open but missing from the table, were added to it.
 
 - Conflict: `test_preferences_dialog.py`, where upstream's `test_bool_enum_widget` and integration's `test_playback_rate_mode_rows` (#9326) were added at the same place; both kept.
-- Tests not run: the merge was made on a host whose glibc 2.23 cannot install current numpy/Qt wheels. Pushed untested at the user's request; run `test_preferences_dialog.py` (and the `_qt settings` suites) on another machine after pulling, before publishing a retention tag.
+- Tests: the merge was made on a host whose glibc 2.23 cannot install current numpy/Qt wheels, so it was pushed untested and verified afterwards on macOS (integration `.venv`): `test_preferences_dialog.py` 19 passed, 3 skipped; `_qt settings` 1112 passed, 66 skipped, with the one failure the known-flaky `test_tour_escape_closes_regardless_of_focus`, which passes alone.
 - Branches of the PRs that landed in the 2026-11-03 sync are already gone from the fork; no deletion candidates remain.
-- Pins are unchanged at `4c997ccab`; no retention tag yet.
+- Retained by the tag `mcslab-gui-eea63e99`. Pins are unchanged at `4c997ccab`.
 
 ### Sync check (2026-11-03)
 
