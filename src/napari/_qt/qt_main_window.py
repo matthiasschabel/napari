@@ -726,6 +726,12 @@ class Window:
         Window menu.
     """
 
+    # Fork contract for integrations that feature-detect it: 1 means the
+    # title-bar close, File > Close Window and Exit all show pending task
+    # status, `register_task_status` is public, and quitting lists every
+    # window's pending tasks. Closing from code still does not ask.
+    CLOSE_TASK_STATUS_VERSION = 1
+
     def __init__(
         self,
         viewer: Viewer,
