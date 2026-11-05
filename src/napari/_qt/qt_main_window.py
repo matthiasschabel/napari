@@ -491,9 +491,10 @@ class _QtMainWindow(QMainWindow):
         """Ask the user to confirm closing, if needed; return whether to close.
 
         Pending tasks are always shown, even when the confirmation dialog
-        has been turned off in the settings.
+        has been turned off in the settings. Quitting lists the pending tasks
+        of every window.
         """
-        task_status = self._window._task_status_manager.get_status()
+        task_status = self._pending_task_status(all_windows=close_app)
         if task_status:
             dialog = ConfirmCloseDialog(
                 self,
@@ -508,6 +509,22 @@ class _QtMainWindow(QMainWindow):
         else:
             return True
         return dialog.exec() == QDialog.DialogCode.Accepted
+
+    def _pending_task_status(self, all_windows: bool) -> list[str]:
+        """Pending task lines, labelled by window title if several have any."""
+        windows = _QtMainWindow._instances if all_windows else [self]
+        pending = [
+            (window.windowTitle(), status)
+            for window in windows
+            if (status := window._window._task_status_manager.get_status())
+        ]
+        if len(pending) == 1:
+            return pending[0][1]
+        return [
+            line
+            for title, status in pending
+            for line in (f'{title}:', *(f'    {item}' for item in status))
+        ]
 
     def close_window(self):
         """Close active dialog or active window."""
@@ -725,6 +742,12 @@ class Window:
         Window menu.
     """
 
+    # Fork contract for integrations that feature-detect it: 1 means the
+    # title-bar close, File > Close Window and Exit all show pending task
+    # status, `register_task_status` is public, and quitting lists every
+    # window's pending tasks. Closing from code still does not ask.
+    CLOSE_TASK_STATUS_VERSION = 1
+
     def __init__(
         self,
         viewer: Viewer,
@@ -935,32 +958,55 @@ class Window:
         viewer_ctx = get_context(self._qt_window)
         self._debug_menu.update_from_context(viewer_ctx)
 
-    def _register_task_status(
+    def register_task_status(
         self,
         provider: str,
         task_status: Status,
         description: str,
         cancel_callback: Optional[Callable] = None,
     ) -> uuid.UUID:
-        """
-        Register a long running task status.
+        """Register the status of a long running task.
+
+        While a task is pending or busy, closing the window from its title bar
+        or the File menu, or quitting, asks for confirmation and lists
+        ``provider: description``. Closing it from code does not ask.
+
+        Parameters
+        ----------
+        provider : str
+            Name of what runs the task, such as a plugin.
+        task_status : Status
+            The task's current status.
+        description : str
+            What the task is doing.
+        cancel_callback : callable, optional
+            Called if the window closes while any task is pending or busy.
+
+        Returns
+        -------
+        uuid.UUID
+            The id to pass to `update_task_status`.
         """
         return self._task_status_manager.register_task_status(
             provider, task_status, description, cancel_callback
         )
 
-    def _update_task_status(
+    def update_task_status(
         self,
         task_status_id: uuid.UUID,
         status: Status,
         description: str = '',
     ) -> bool:
-        """
-        Update a long running task status.
+        """Update a task status registered with `register_task_status`.
+
+        Returns False if ``task_status_id`` is not registered.
         """
         return self._task_status_manager.update_task_status(
             task_status_id, status, description
         )
+
+    _register_task_status = register_task_status
+    _update_task_status = update_task_status
 
     def _handle_trace_file_on_start(self):
         """Start trace of `trace_file_on_start` config set."""
