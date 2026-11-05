@@ -489,9 +489,10 @@ class _QtMainWindow(QMainWindow):
         """Ask the user to confirm closing, if needed; return whether to close.
 
         Pending tasks are always shown, even when the confirmation dialog
-        has been turned off in the settings.
+        has been turned off in the settings. Quitting lists the pending tasks
+        of every window.
         """
-        task_status = self._window._task_status_manager.get_status()
+        task_status = self._pending_task_status(all_windows=close_app)
         if task_status:
             dialog = ConfirmCloseDialog(
                 self,
@@ -506,6 +507,22 @@ class _QtMainWindow(QMainWindow):
         else:
             return True
         return dialog.exec() == QDialog.DialogCode.Accepted
+
+    def _pending_task_status(self, all_windows: bool) -> list[str]:
+        """Pending task lines, labelled by window title if several have any."""
+        windows = _QtMainWindow._instances if all_windows else [self]
+        pending = [
+            (window.windowTitle(), status)
+            for window in windows
+            if (status := window._window._task_status_manager.get_status())
+        ]
+        if len(pending) == 1:
+            return pending[0][1]
+        return [
+            line
+            for title, status in pending
+            for line in (f'{title}:', *(f'    {item}' for item in status))
+        ]
 
     def close_window(self):
         """Close active dialog or active window."""
