@@ -919,32 +919,55 @@ class Window:
         viewer_ctx = get_context(self._qt_window)
         self._debug_menu.update_from_context(viewer_ctx)
 
-    def _register_task_status(
+    def register_task_status(
         self,
         provider: str,
         task_status: Status,
         description: str,
         cancel_callback: Optional[Callable] = None,
     ) -> uuid.UUID:
-        """
-        Register a long running task status.
+        """Register the status of a long running task.
+
+        While a task is pending or busy, closing the window from its title bar
+        or the File menu, or quitting, asks for confirmation and lists
+        ``provider: description``. Closing it from code does not ask.
+
+        Parameters
+        ----------
+        provider : str
+            Name of what runs the task, such as a plugin.
+        task_status : Status
+            The task's current status.
+        description : str
+            What the task is doing.
+        cancel_callback : callable, optional
+            Called if the window closes while any task is pending or busy.
+
+        Returns
+        -------
+        uuid.UUID
+            The id to pass to `update_task_status`.
         """
         return self._task_status_manager.register_task_status(
             provider, task_status, description, cancel_callback
         )
 
-    def _update_task_status(
+    def update_task_status(
         self,
         task_status_id: uuid.UUID,
         status: Status,
         description: str = '',
     ) -> bool:
-        """
-        Update a long running task status.
+        """Update a task status registered with `register_task_status`.
+
+        Returns False if ``task_status_id`` is not registered.
         """
         return self._task_status_manager.update_task_status(
             task_status_id, status, description
         )
+
+    _register_task_status = register_task_status
+    _update_task_status = update_task_status
 
     def _handle_trace_file_on_start(self):
         """Start trace of `trace_file_on_start` config set."""
