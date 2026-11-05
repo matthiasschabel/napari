@@ -39,6 +39,7 @@ context menu.
 | [#9700](https://github.com/napari/napari/pull/9700) | `fix/shapes-lasso-repeated-closing-vertex` | A polygon drawn back onto its first vertex stored it twice. Integration carries it by cherry-pick (2026-10-12). |
 | [#9636](https://github.com/napari/napari/pull/9636) | `feature/shapes-draw-pause` | Pause an in-progress Shapes draw on a slice or axes change. Not carried in integration; see `shapes_draw_pause_plan.md`. |
 | [#9638](https://github.com/napari/napari/pull/9638) | `feature/shapes-draw-anchor` | Let a Shapes draw continue on other slices, anchored to its origin slice; stacked on #9636 (at `ea2b27e0b`). Not carried in integration. |
+| [#9862](https://github.com/napari/napari/pull/9862) (draft) | `fix/native-close-window-leak` | A window closed with the title-bar button, Cmd-W or Cmd-Q now runs `Window._teardown()` (theme disconnects, `QtViewer.close()`, drops `_qt_window`) from the accepted Close in `_QtMainWindow.event()`, so the `Viewer` is released. Before, only `Window.close()` cleaned up. The teardown sits in `event()` rather than `closeEvent` so tests that call `closeEvent` with a mocked event (`test_title_bar_close_with_task_status_asks_once` from `fix/close-paths-task-status`) do not tear down a window Qt never closes.  Merged into integration 2026-11-05 (`0c63da14d`, `6040bc60e`). Pirana keeps `NapariCaps.release_window_globals` until this ships in a release it pins to. Left for a follow-up: `_disconnect_theme` disconnects a new lambda for `theme.events.canvas`, which only keeps the small `Window` object alive now. |
 
 ### Lasso branch, PR not yet opened: retain
 
@@ -47,15 +48,6 @@ Cut from upstream main and cherry-picked onto integration on 2026-10-12. Togethe
 | Branch | Purpose |
 |---|---|
 | `feature/shapes-lasso-vertex-retention` | Per-layer `lasso_rdp_epsilon` (0 keeps every vertex) for #9412, replacing the boolean `preserve_lasso_vertices`. Waits on a maintainer reply in #9412. |
-
-### Native-close leak, PR not yet opened: retain
-
-Cut from upstream main (1861293dc) and merged into integration on 2026-11-05 (merges 0c63da14d,
-6040bc60e). The PR draft is in pirana-gui `docs/gui/dev/napari/native_close_viewer_release_pr_draft.md`.
-
-| Branch | Purpose |
-|---|---|
-| `fix/native-close-window-leak` | A window closed with the title-bar button, Cmd-W or Cmd-Q now runs `Window._teardown()` (theme disconnects, `QtViewer.close()`, drops `_qt_window`) from the accepted Close in `_QtMainWindow.event()`, so the `Viewer` is released. Before, only `Window.close()` cleaned up. The teardown sits in `event()` rather than `closeEvent` so tests that call `closeEvent` with a mocked event (`test_title_bar_close_with_task_status_asks_once` from `fix/close-paths-task-status`) do not tear down a window Qt never closes. Pirana keeps `NapariCaps.release_window_globals` until this ships in a release it pins to. Left for a follow-up: `_disconnect_theme` disconnects a new lambda for `theme.events.canvas`, which only keeps the small `Window` object alive now. |
 
 ### Upstream PRs that differ from integration
 
