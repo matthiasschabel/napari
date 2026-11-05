@@ -342,3 +342,15 @@ def test_title_bar_close_with_task_status_asks_once(
 
     dialog.assert_called_once()
     event.accept.assert_called_once()
+
+
+def test_register_task_status_is_listed_until_completed(make_napari_viewer):
+    window = make_napari_viewer().window
+    task = window.register_task_status(
+        'test-provider', Status.PENDING, 'saving results'
+    )
+    manager = window._task_status_manager
+    assert manager.get_status() == ['test-provider: saving results']
+
+    assert window.update_task_status(task, Status.COMPLETED)
+    assert manager.get_status() == []
