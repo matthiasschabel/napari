@@ -376,39 +376,41 @@ def test_register_task_status_is_listed_until_completed(make_napari_viewer):
 
 
 def test_exit_lists_pending_task_status_of_every_window(
-    make_napari_viewer, monkeypatch, mock_qt_method_ctx
+    make_napari_viewer, mock_qt_method_ctx
 ):
     first = make_napari_viewer(title='first')
     second = make_napari_viewer(title='second')
     second.window.register_task_status(
         'test-provider', Status.PENDING, 'saving results'
     )
-    dialogs = _fake_close_dialog(monkeypatch, QDialog.DialogCode.Rejected)
-
-    with mock_qt_method_ctx('qtpy.QtWidgets.QMainWindow.close') as qt_close:
+    with (
+        patch('napari._qt.qt_main_window.ConfirmCloseDialog') as dialog,
+        mock_qt_method_ctx('qtpy.QtWidgets.QMainWindow.close') as qt_close,
+    ):
+        dialog.return_value.exec.return_value = QDialog.DialogCode.Rejected
         first.window._qt_window.close(quit_app=True, confirm_need=True)
 
-    assert [dialog['extra_info'] for dialog in dialogs] == [
-        'test-provider: saving results'
-    ]
+    dialog.assert_called_once()
+    assert (
+        dialog.call_args.kwargs['extra_info']
+        == 'test-provider: saving results'
+    )
     qt_close.assert_not_called()
     assert second.window._task_status_manager.get_status() == [
         'test-provider: saving results'
     ]
 
 
-def test_exit_labels_pending_task_status_by_window(
-    make_napari_viewer, monkeypatch
-):
+def test_exit_labels_pending_task_status_by_window(make_napari_viewer):
     first = make_napari_viewer(title='first')
     second = make_napari_viewer(title='second')
     first.window.register_task_status('provider', Status.PENDING, 'one')
     second.window.register_task_status('provider', Status.BUSY, 'two')
-    dialogs = _fake_close_dialog(monkeypatch, QDialog.DialogCode.Rejected)
+    with patch('napari._qt.qt_main_window.ConfirmCloseDialog') as dialog:
+        dialog.return_value.exec.return_value = QDialog.DialogCode.Rejected
+        first.window._qt_window.close(quit_app=True, confirm_need=True)
 
-    first.window._qt_window.close(quit_app=True, confirm_need=True)
-
-    text = dialogs[0]['extra_info']
+    text = dialog.call_args.kwargs['extra_info']
     assert 'first:\n    provider: one' in text
     assert 'second:\n    provider: two' in text
     assert len(text.splitlines()) == 4
