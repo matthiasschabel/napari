@@ -46,14 +46,17 @@ and vispy renders them.
 | U6 | Raise napari's minimum vispy to the first release with #2796 and #2804; close #9561 | a vispy release with both | Fixes #8056. Independent of the infinity work. The pin bump is a napari maintainer decision. |
 | U10 | Clip finite float64 values above FLT_MAX before the float32 cast in `fix_data_dtype`, keeping real infinities | - | Small, independent. Today invisible; becomes a defect once infinities have their own color. |
 | U10s | Same clip for Surface vertex values, which bypass `fix_data_dtype` and are cast to float32 in vispy `mesh.py:330` | - | Separate PR, or defer Surface overflow explicitly. |
-| U7 | `neg_inf_color`/`pos_inf_color` on `Colormap`, applied in `map()` after the low/high checks; `same_colors()` compares them; `_napari_cmap_to_vispy` pops them until vispy accepts them; `cmap.to_napari()` forwards them by feature detection | napari#9372 accepted | Prototype exists (Stage 1). Without the pop, every conversion raises `TypeError` on vispy without the keywords. |
+| U7 | `neg_inf_color`/`pos_inf_color` on `Colormap`, applied in `map()` after the low/high checks; `same_colors()` compares them; `cmap.to_napari()` forwards them by feature detection | napari#9372 accepted; ships with U7t and U9 | Prototype exists (Stage 1); it pops the fields in `_napari_cmap_to_vispy`, which U9 replaces. |
 | U7t | Thumbnail normalizes only finite values, so NaN and infinities reach `map()` (`layers/image/image.py:589-594` clips them, and `(-inf) ** gamma` is NaN) | U7 | Prototype `51881ee4`. `map()` alone does not fix it. |
-| U9 | Pass the infinity colors to vispy in `_napari_cmap_to_vispy`, and back in `convert_vispy_colormap` (which copies special colors field by field) | U7; a vispy release with U8a and U8b | Second pin bump. |
+| U9 | Pass the infinity colors to vispy in `_napari_cmap_to_vispy`, and back in `convert_vispy_colormap` (which copies special colors field by field) | a vispy release with U8a and U8b | Second pin bump. Same PR as U7 and U7t. |
 | U9s | Surface with gamma ≠ 1 builds a bare `VispyColormap(colors)` from a sampled ramp (`_vispy/layers/surface.py:143-152`), dropping all special colors | vispy U8c for infinities | Already loses NaN/low/high today, so the NaN/low/high half can go now. |
 | C1 | cmap `to_vispy()` forwards only ramp colors and controls, dropping bad/under/over | - | cmap PR, with feature detection for older vispy. Not on napari's critical path. |
 
-Order: U6 and U10 can go as soon as their dependencies allow and don't wait on the rest. U7 and
-U7t need a napari maintainer to accept the API first. U9 and U9s wait for vispy's second release.
+Order: U6 and U10 can go as soon as their dependencies allow and don't wait on the rest. U7, U7t
+and U9 are **one PR**, opened after vispy's second release (changed 2026-11-03). Landing the model
+first would color infinities in thumbnails and `map()` while the canvas ignores them, and new API
+that the canvas ignores is a hard sell. Until then, napari#9372 asks only for agreement on the
+names and fallbacks. U9s's infinity half waits for vispy's second release too.
 
 ### Maintainer decisions
 
@@ -87,8 +90,8 @@ so they need no separate exceptional-value work once the colormap carries the co
 
 1. Once vispy releases #2796 and #2804: U6.
 2. U10 and U10s now, as small independent PRs.
-3. Edit napari#9372 down to the infinity colors, then U7 and U7t when it is accepted.
-4. U9 and U9s after vispy U8a-c are released.
+3. Edit napari#9372 down to the infinity colors and a design question (draft ready).
+4. After vispy U8a-c are released: one PR with U7, U7t and U9; then U9s.
 
 The fork's prototypes are the starting point for U7 and U7t; the Stage 2 GPU code is not
 proposed upstream.
