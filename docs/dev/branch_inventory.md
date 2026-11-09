@@ -1,7 +1,7 @@
 # Production fork branch inventory
 
 **Status:** Active
-**Last updated:** 2026-11-05
+**Last updated:** 2026-11-08
 **Scope:** napari integration, upstream topic branches, compositional experiments, and pirana consumers
 
 ## Context
@@ -55,6 +55,16 @@ When these merge, reconcile the integration delta rather than simply dropping it
 
 - #9563 reports ADDED `data_indices` counted from the end (`(-2, -1)`), matching `Points.add`. Integration reports positive indices (`(2, 3)`). Pirana is indifferent: its ROI controller ignores ADDED indices and normalizes negative indices for other actions (checked 2026-09-26), so take whichever form upstream accepts.
 - #9442/#9568 add `Dims.axis_locked`, which is separate from integration's owner-lock API that pirana consumes.
+
+### Sync check (2026-11-08)
+
+The close-path topics gained commits on 2026-11-05/06 after their merge into integration. Merged with `--no-ff`: `feature/viewer-closing-event` (`a42ebcd37`, closing handlers isolated, real close paths tested), `fix/close-paths-task-status` (`356f77a1f` + pre-commit `c9140d966`, tests use the file's `patch`/`MagicMock` pattern), and `feature/task-status-public-quit` (`7a3316894`).
+
+- Conflict: `test_qt_window.py`, the two Exit task-status tests. Integration still had the `_fake_close_dialog` monkeypatch version; both later commits moved to `patch('napari._qt.qt_main_window.ConfirmCloseDialog')`, so the branch side was taken. The file now equals the branch tip plus integration's two `_shutdown_open_windows` tests.
+- No upstream merge; upstream/main is 906a64564, not yet merged. The fork's `main` was fast-forwarded to it.
+- Every other topic is either carried in adapted form or excluded on purpose, as the tables above record; none was merged.
+- Tests (Linux, PyQt6, offscreen with `DISPLAY` unset; this host has no OpenGL, so rendering tests fail or segfault): `-k "close or closing or task_status or exit or shutdown or quit"` over `test_qt_window.py` and `test_viewer.py`, 17 passed. ruff check and format clean on the touched files. The full files and pirana-gui's fork suites were not run.
+- Local only: not pushed, no tag; pins unchanged.
 
 ### Sync check (2026-11-04)
 
@@ -200,4 +210,4 @@ undo/redo. Do not remove the global suppression as part of that work.
 
 After each upstream merge, inspect its integration delta, update the consumer compatibility boundary, run the relevant stock/fork tests, and retire the landed topic. Keep this inventory current rather than opening another competing assembly branch.
 
-Pins: pirana-gui, pirana-lab and ohsu-projects are on `4c997ccab` since 2026-10-12, retained by the public tag `mcslab-gui-4c997cca` (the pins left `e33f37a6a` in September via `e692b25c` and `b1a66f25c`; this entry was stale until then). The next advance follows pirana-gui's `docs/gui/dev/napari/fork_integration_workflow.md`: tag first (`git push origin refs/tags/mcslab-gui-<sha>`; never the branch), then re-lock and run the fork reference suites.
+Pins (2026-11-08): pirana-gui, pirana-lab and ohsu-projects name the fork as `@integration` and their `uv.lock`s pin the commit (`b08cafcab` on 2026-11-08). `integration` is pushed to the fork, which blocks its force-push and deletion, so every pinned commit stays reachable; the `mcslab-gui-*` tags remain for older pins. Advance with pirana-gui's `tools/napari_pin.py bump --execute` after pushing `integration`; its workflow is `docs/gui/dev/napari/fork_integration_workflow.md`.

@@ -121,8 +121,8 @@ Pirana follow-ups:
    navigation works mid-draw, with the switch set to pause.
 3. Integration tests for a slice change mid-draw: in-flight vertex history and Backspace, finish,
    leaving ROI mode.
-4. Advance pirana-gui's `dev-fork` rev, pirana-lab's `NAPARI_METADATA_COMMIT` and both `uv.lock`
-   together.
+4. Push `integration` and advance the consumer locks with pirana-gui's
+   `tools/napari_pin.py bump --execute`.
 5. `roi_panel._discard_any_draw_in_flight` docstring describes the mode-setter order #9637 fixes.
 
 ## Alternatives Considered
