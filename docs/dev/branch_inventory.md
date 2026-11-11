@@ -1,7 +1,7 @@
 # Production fork branch inventory
 
 **Status:** Active
-**Last updated:** 2026-11-08
+**Last updated:** 2026-11-10
 **Scope:** napari integration, upstream topic branches, compositional experiments, and pirana consumers
 
 ## Context
@@ -48,6 +48,12 @@ Cut from upstream main and cherry-picked onto integration on 2026-10-12. Togethe
 | Branch | Purpose |
 |---|---|
 | `feature/shapes-lasso-vertex-retention` | Per-layer `lasso_rdp_epsilon` (0 keeps every vertex) for #9412, replacing the boolean `preserve_lasso_vertices`. Waits on a maintainer reply in #9412. |
+
+### Close-path branch, no PR: retain
+
+| Branch | Purpose |
+|---|---|
+| `feature/task-status-public-quit` | Stacked on #9863 at `356f77a1f`, merged into integration 2026-11-05. Makes `Window.register_task_status`/`update_task_status` public (`74296422a`) and lists every window's pending tasks in the quit confirmation (`3d06eda2b`). `fee308cea` adds `Window.CLOSE_TASK_STATUS_VERSION`, the fork contract integrations feature-detect; it is fork only, so a PR needs a branch without it. Whether to propose the other two commits upstream once #9863 lands is undecided. |
 
 ### Upstream PRs that differ from integration
 
