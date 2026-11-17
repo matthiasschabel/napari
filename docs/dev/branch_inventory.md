@@ -1,12 +1,12 @@
 # Production fork branch inventory
 
 **Status:** Active
-**Last updated:** 2026-11-10
+**Last updated:** 2026-11-16
 **Scope:** napari integration, upstream topic branches, compositional experiments, and pirana consumers
 
 ## Context
 
-Integration includes upstream main through 1861293dc (v0.10.0 plus five commits), merged 2026-11-04; see the sync check below. A merged PR is not a reason to revert its old merge: inspect the remaining source delta. Retire a compatibility path when its fix is present in every supported consumer profile.
+Integration includes upstream main through 500295d2b, merged 2026-11-16; see the sync check below. A merged PR is not a reason to revert its old merge: inspect the remaining source delta. Retire a compatibility path when its fix is present in every supported consumer profile.
 
 ## Current Decision
 
@@ -61,6 +61,14 @@ When these merge, reconcile the integration delta rather than simply dropping it
 
 - #9563 reports ADDED `data_indices` counted from the end (`(-2, -1)`), matching `Points.add`. Integration reports positive indices (`(2, 3)`). Pirana is indifferent: its ROI controller ignores ADDED indices and normalizes negative indices for other actions (checked 2026-09-26), so take whichever form upstream accepts.
 - #9442/#9568 add `Dims.axis_locked`, which is separate from integration's owner-lock API that pirana consumes.
+
+### Sync check (2026-11-16)
+
+Merged upstream/main 500295d2b into integration with `--no-ff` (`ea3ada7d5`): 24 commits since 906a64564, among them #9870 (skip the canvas cleanup when closing the viewer), #9885 (abort when closing a playing `QtDims`), #9855 (`dims_displayed` overlay), #9686 (layers from Future results on the main thread) and #9701 (deprecated-property detection in `EventedModel`). No carried PR landed; every PR in the retain table is still open upstream.
+
+- Conflict: `_vispy/canvas.py`, two hunks from #9202's type hints. `_update_layer_overlays` takes upstream's `self._overlay_callbacks[layer]` (the dict is filled and cleared at the same places on both sides) and keeps integration's `update_child_transforms`; `enable_dims_play` takes upstream's `*args: Any` below integration's `_update_viewbox_layer`/`_prepare_viewbox_layers`.
+- Tests (macOS, integration `.venv`): the 16 test files the merge changed plus `_tests/test_viewer.py`, `layers/base/_tests`, `components/_tests`, `_vispy/_tests`, `test_qt_window.py` and `test_qt_viewer.py`: 1416 passed, 49 skipped, 4 xfailed, 3 failed. The failures are the three `test_emitting_data_doesnt_change_*` tests for Points in `_tests/test_viewer.py`; they fail the same way on pre-merge integration (`9cd94a522`): `VispyPointsLayer._on_coordinates_change` reads `event.action`, which a bare `layer.events.data(value=...)` event does not carry. Not fixed here. ruff is not installed in the `.venv` and was not run; the full suite and pirana-gui's fork suites were not run.
+- The fork's `main` was not moved; it is 24 behind upstream/main.
 
 ### Sync check (2026-11-08)
 
