@@ -844,6 +844,13 @@ class AnimationThread(QThread):
         self.current = 0
         self.step = 1
 
+    def start(self, *args, **kwargs):
+        # Mark the animation as playing before the thread starts instead of
+        # in work(): otherwise `is_playing` is still False after `started`
+        # is delivered, and a stop requested before work() runs is undone.
+        self._waiter.clear()
+        super().start(*args, **kwargs)
+
     def run(self):
         self.work()
 
@@ -896,7 +903,6 @@ class AnimationThread(QThread):
         else:
             # immediately advance one frame
             self.advance()
-        self._waiter.clear()
         self._waiter.wait(self.interval / 1000)
         while not self._waiter.is_set():
             self.advance()

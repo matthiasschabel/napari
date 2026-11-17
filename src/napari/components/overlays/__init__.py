@@ -23,6 +23,7 @@ from napari.components.overlays.scene_line import SceneLineOverlay
 from napari.components.overlays.scene_mesh import SceneMeshOverlay
 from napari.components.overlays.text import (
     CurrentSliceOverlay,
+    DimsDisplayedOverlay,
     LayerNameOverlay,
     TextOverlay,
 )
@@ -37,6 +38,7 @@ __all__ = [
     'CoordinateGridOverlay',
     'CrosshairOverlay',
     'CurrentSliceOverlay',
+    'DimsDisplayedOverlay',
     'LabelsBrushStrokeOverlay',
     'LabelsPolygonOverlay',
     'LayerNameOverlay',
